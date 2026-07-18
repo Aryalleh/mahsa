@@ -92,12 +92,15 @@ class Brain:
                 matches = [m for m in self.memory.find_contacts_by_name(who) if m[0] != user_id]
                 if matches:
                     to_id, to_name = matches[0]
-                    relay = await self.compose_relay(sender_name or "دوستت", message)
-                    self.memory.add_message(user_id, "user", text)
-                    ack = f"چشم، به {to_name} رسوندم 🌸"
-                    self.memory.add_message(user_id, "assistant", ack)
+                    relay = self.compose_relay(sender_name or "دوستت", to_name, message)
                     return {"kind": "relay", "to_id": to_id, "to_name": to_name,
-                            "text": relay, "ack": ack}
+                            "text": relay, "user_text": text}
+                # Detected a relay request but couldn't match the friend — say so
+                # honestly instead of pretending it was delivered.
+                self.memory.add_message(user_id, "user", text)
+                ack = f"«{who}» رو توی دوستام پیدا نکردم. مطمئنی اسمش درسته؟"
+                self.memory.add_message(user_id, "assistant", ack)
+                return {"kind": "reply", "text": ack}
         reply = await self.reply(user_id, text, display=sender_name, relationship=relationship)
         return {"kind": "reply", "text": reply}
 
@@ -138,19 +141,15 @@ class Brain:
             return None
         return who, message
 
-    async def compose_relay(self, from_name: str, content: str) -> str:
-        """Write, in Mahsa's voice, a short message passing `content` from a friend."""
-        system = self.persona.chat_system_prompt(self.memory)
-        prompt = (
-            f"Your friend {from_name} asked you to pass a message to another friend. "
-            f"The message is: \"{content}\". Write the short, warm text you'd send that "
-            f"friend now, making clear it's from {from_name}. One or two lines, your voice."
-        )
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ]
-        return await asyncio.to_thread(self.engine.chat, messages, 0.7, 120)
+    @staticmethod
+    def compose_relay(from_name: str, to_name: str, content: str) -> str:
+        """A fixed relay template.
+
+        Deliberately NOT model-generated: letting the LLM rewrite the message
+        triggered refusals and leaked its internal reasoning. A template always
+        delivers exactly what the sender asked, in Mahsa's warm style.
+        """
+        return f"سلام {to_name} جان 🌸 {from_name} گفت بهت بگم: «{content}»"
 
     # ---- daily emotional diary post -------------------------------------
     async def write_daily_entry(self) -> tuple[str, str]:

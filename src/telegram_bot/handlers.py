@@ -133,15 +133,21 @@ def register_handlers(
             return
 
         if result["kind"] == "relay":
+            to_name = result["to_name"]
             try:
                 await client.send_message(result["to_id"], result["text"])
                 brain.memory.add_message(result["to_id"], "assistant", result["text"])
-                log.info("Relayed a message to %s.", result["to_name"])
+                brain.memory.add_message(uid, "user", result["user_text"])
+                ack = f"چشم، به {to_name} رسوندم 🌸"
+                brain.memory.add_message(uid, "assistant", ack)
+                log.info("Relayed a message to %s.", to_name)
+                await event.reply(ack)
             except Exception:  # noqa: BLE001
-                log.warning("Relay to %s failed", result["to_name"])
-                await event.reply("خواستم بهش برسونم ولی نشد پیام بدم (شاید هنوز بهم پیام نداده).")
-                return
-            await event.reply(result["ack"])
+                log.warning("Relay to %s failed", to_name)
+                await event.reply(
+                    f"خواستم به {to_name} برسونم ولی نشد — تا وقتی اون یه بار به من "
+                    "پیام نده، نمی‌تونم بهش پیام بدم."
+                )
         else:
             await event.reply(result["text"])
 
@@ -389,10 +395,8 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
 
         sender = await event.get_sender()
         from_name = getattr(sender, "first_name", None) or "یکی از دوستات"
-        try:
-            relay = await brain.compose_relay(from_name, message)
-        except Exception:  # noqa: BLE001
-            relay = f"{from_name} گفت بهت بگم: {message}"
+        to_name = target_raw.lstrip("@") if not target_raw.lstrip("-").isdigit() else "دوستت"
+        relay = brain.compose_relay(from_name, to_name, message)
         try:
             await client.send_message(recipient, relay)
             if isinstance(recipient, int):
@@ -400,7 +404,7 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
             await event.reply("رسوندم بهش ✅")
         except Exception:  # noqa: BLE001
             log.warning("Relay to %s failed", recipient)
-            await event.reply("نشد بهش پیام بدم — شاید هنوز به من پیام نداده یا آیدی درست نیست.")
+            await event.reply("نشد بهش پیام بدم — تا وقتی اون یه بار به من پیام نده، نمی‌تونم بهش پیام بدم.")
         return True
 
     if cmd == "name":

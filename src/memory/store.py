@@ -254,7 +254,8 @@ class MemoryStore:
             return []
         out = []
         for uid, disp, status in self.list_contacts("approved"):
-            if needle in (disp or "").lower():
+            # Skip contacts with no real name ("?"), so we never relay blindly.
+            if disp and disp != "?" and needle in disp.lower():
                 out.append((uid, disp))
         return out
 
