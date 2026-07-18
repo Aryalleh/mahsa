@@ -12,6 +12,7 @@ class Persona:
     def __init__(self, profile: dict):
         self.profile = profile
         self.name: str = profile.get("name", "Mahsa")
+        self.name_fa: str = profile.get("name_fa") or self.name
 
     @classmethod
     def load(cls, path: str) -> "Persona":

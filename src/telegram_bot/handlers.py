@@ -107,7 +107,8 @@ def register_handlers(
                     brain.memory.upsert_contact(uid, display, "pending")
                     await _notify_admins_new_contact(client, admin_ids, uid, display, text)
                     await event.reply(
-                        "سلام 🌙 من مهسام. الان یه‌کم سرم شلوغه، بذار ببینم و بهت جواب می‌دم."
+                        f"سلام 🌙 من {brain.persona.name_fa}‌ام. الان یه‌کم سرم شلوغه، "
+                        "بذار ببینم و بهت جواب می‌دم."
                     )
                 # pending (already asked) → stay quiet until an admin decides
                 return
@@ -203,6 +204,7 @@ def register_handlers(
     if group_chat_enabled or (watch and getattr(watch, "enabled", False)):
 
         persona_name = brain.persona.name
+        persona_name_fa = brain.persona.name_fa
 
         @client.on(events.NewMessage(func=lambda e: e.is_group))
         async def on_group_message(event: events.NewMessage.Event):
@@ -221,7 +223,7 @@ def register_handlers(
                 replied = await event.get_reply_message()
                 is_reply_to_me = bool(replied and replied.sender_id == await my_id())
             mentioned = bool(getattr(event.message, "mentioned", False))
-            named = persona_name.lower() in text.lower() or "مهسا" in text
+            named = persona_name.lower() in text.lower() or persona_name_fa in text
             if not (is_reply_to_me or mentioned or named):
                 return
 
@@ -443,7 +445,7 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
 
     if cmd == "approve":
         brain.memory.upsert_contact(target, None, "approved")
-        await event.reply(f"✅ {target} تأیید شد. حالا مهسا باهاش راحت چت می‌کنه.")
+        await event.reply(f"✅ {target} تأیید شد. حالا {brain.persona.name_fa} باهاش راحت چت می‌کنه.")
         # Only greet real users. Negative ids are channels/groups (can't be DMed).
         if target > 0:
             try:
