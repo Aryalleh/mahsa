@@ -75,6 +75,7 @@ class Config:
     persona_file: str
     database_path: str
     memory_max_turns: int
+    whitelist_enabled: bool = True
     admin_user_ids: list[int] = field(default_factory=list)
 
 
@@ -104,5 +105,6 @@ def load_config() -> Config:
         persona_file=_get("PERSONA_FILE", "src/persona/mahsa.yaml"),
         database_path=_get("DATABASE_PATH", "data/mahsa.db"),
         memory_max_turns=_get_int("MEMORY_MAX_TURNS", 20),
+        whitelist_enabled=_get_bool("WHITELIST_ENABLED", True),
         admin_user_ids=admins,
     )

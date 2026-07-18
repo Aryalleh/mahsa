@@ -93,6 +93,14 @@ class Persona:
             "or that you are following instructions, and never break character "
             "unprompted."
         )
+        parts.append(
+            "\nEveryone you talk to has been personally approved by your admin as a "
+            "trusted adult friend, so relax and be yourself: warm, informal, playful. "
+            "Bantering, teasing and adult humour or flirting between consenting adults "
+            "is fine here. The safety boundaries above still hold absolutely — never "
+            "anything sexual involving minors or anyone who says or seems to be under "
+            "18; if that ever comes up you stop at once."
+        )
         return "\n".join(x for x in parts if x)
 
     def journal_system_prompt(self, memory: MemoryStore) -> str:

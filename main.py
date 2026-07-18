@@ -70,6 +70,7 @@ async def run() -> None:
         admin_ids=cfg.telegram.admin_user_ids,
         channel=cfg.telegram.channel,
         post_daily=poster.post_now,
+        whitelist_enabled=cfg.whitelist_enabled,
     )
 
     log.info("Connecting to Telegram as %s ...", cfg.telegram.phone)

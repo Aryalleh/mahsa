@@ -26,6 +26,10 @@ HELP_TEXT = (
     "/learnstyle @ch [n] — learn a public channel's texting vibe (default 200 msgs)\n"
     "/stylecount     — how many style snippets she's learned\n"
     "/forgetstyle    — wipe all learned style snippets\n"
+    "/pending        — people waiting for your approval\n"
+    "/approve <uid>  — let Mahsa chat with this person (a friend)\n"
+    "/block <uid>    — block this person\n"
+    "/friends        — list approved friends\n"
     "/mood           — show her current mood\n"
     "/post           — write & publish today's diary post now\n"
     "/reset <uid>    — clear a user's conversation history\n"
@@ -39,6 +43,7 @@ def register_handlers(
     admin_ids: list[int],
     channel: str,
     post_daily,  # coroutine fn: async def(force: bool) -> str | None
+    whitelist_enabled: bool = True,
 ) -> None:
 
     def is_admin(uid: int) -> bool:
@@ -58,8 +63,10 @@ def register_handlers(
 
         # ---- admin commands ---------------------------------------------
         if text.startswith("/"):
-            # Style-learning commands need the client (to read channels).
+            # Style + contact commands need the client (channels / messaging users).
             if is_admin(uid) and await _handle_style_command(client, event, text, brain):
+                return
+            if is_admin(uid) and await _handle_contact_command(client, event, text, brain):
                 return
             if await _handle_command(event, text, uid, is_admin(uid), brain, post_daily):
                 return
@@ -68,6 +75,24 @@ def register_handlers(
                 return
 
         display = getattr(sender, "first_name", None)
+
+        # ---- whitelist gating -------------------------------------------
+        # Admins are always allowed. Everyone else must be an approved contact.
+        if whitelist_enabled and not is_admin(uid):
+            status = brain.memory.get_contact_status(uid)
+            if status == "blocked":
+                return  # silently ignore
+            if status != "approved":
+                if status is None:
+                    # brand-new person: register + ask the admins
+                    brain.memory.upsert_contact(uid, display, "pending")
+                    await _notify_admins_new_contact(client, admin_ids, uid, display, text)
+                    await event.reply(
+                        "سلام 🌙 من مهسام. الان یه‌کم سرم شلوغه، بذار ببینم و بهت جواب می‌دم."
+                    )
+                # pending (already asked) → stay quiet until an admin decides
+                return
+
         log.info("Message from %s (%s): %s", display, uid, text[:80])
 
         try:
@@ -129,6 +154,68 @@ async def _handle_style_command(client, event, text: str, brain: Brain) -> bool:
             "Couldn't read that channel — is it public and spelled right? "
             "(Private channels I'm not a member of won't work.)"
         )
+    return True
+
+
+async def _notify_admins_new_contact(client, admin_ids, uid, display, first_msg) -> None:
+    """Ping every admin that a new person wants to talk, with approve/block hints."""
+    preview = (first_msg or "")[:120]
+    text = (
+        "👋 یه نفر جدید به مهسا پیام داد:\n"
+        f"• نام: {display or '؟'}\n"
+        f"• آیدی: {uid}\n"
+        f"• پیام اول: «{preview}»\n\n"
+        f"دوستته؟ برای تأیید: /approve {uid}\n"
+        f"برای بلاک: /block {uid}"
+    )
+    for admin in admin_ids:
+        try:
+            await client.send_message(admin, text)
+        except Exception:  # noqa: BLE001
+            log.exception("Could not notify admin %s", admin)
+
+
+async def _handle_contact_command(client, event, text: str, brain: Brain) -> bool:
+    """Whitelist admin commands: /approve /block /pending /friends. Returns True if handled."""
+    parts = text.split()
+    cmd = parts[0].lower().lstrip("/")
+    if cmd not in {"approve", "block", "pending", "friends"}:
+        return False
+
+    if cmd == "pending":
+        rows = brain.memory.list_contacts("pending")
+        if not rows:
+            await event.reply("کسی توی صف تأیید نیست.")
+        else:
+            await event.reply("در انتظار تأیید:\n" +
+                              "\n".join(f"• {d} — {u}  (/approve {u})" for u, d, _ in rows))
+        return True
+
+    if cmd == "friends":
+        rows = brain.memory.list_contacts("approved")
+        if not rows:
+            await event.reply("هنوز دوستی تأیید نشده.")
+        else:
+            await event.reply("دوستای تأییدشده:\n" +
+                              "\n".join(f"• {d} — {u}" for u, d, _ in rows))
+        return True
+
+    # approve / block need a user id
+    if len(parts) < 2 or not parts[1].lstrip("-").isdigit():
+        await event.reply(f"Usage: /{cmd} <user id>")
+        return True
+    target = int(parts[1])
+
+    if cmd == "approve":
+        brain.memory.upsert_contact(target, None, "approved")
+        await event.reply(f"✅ {target} تأیید شد. حالا مهسا باهاش راحت چت می‌کنه.")
+        try:
+            await client.send_message(target, "سلام دوباره 🌸 ببخشید معطل شدی، بگو چه خبر؟")
+        except Exception:  # noqa: BLE001
+            log.exception("Could not greet approved user %s", target)
+    else:  # block
+        brain.memory.upsert_contact(target, None, "blocked")
+        await event.reply(f"🚫 {target} بلاک شد.")
     return True
 
 

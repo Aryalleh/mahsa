@@ -55,6 +55,14 @@ CREATE TABLE IF NOT EXISTS style_samples (
     content   TEXT    NOT NULL UNIQUE,
     created_at TEXT   NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS contacts (
+    user_id   INTEGER PRIMARY KEY,
+    display   TEXT,
+    status    TEXT    NOT NULL DEFAULT 'pending',  -- pending | approved | blocked
+    created_at TEXT   NOT NULL,
+    updated_at TEXT   NOT NULL
+);
 """
 
 
@@ -207,6 +215,50 @@ class MemoryStore:
                 cur = self._conn.execute("DELETE FROM style_samples")
             self._conn.commit()
             return cur.rowcount
+
+    # ---- contacts / whitelist -------------------------------------------
+    def get_contact_status(self, user_id: int) -> str | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT status FROM contacts WHERE user_id=?", (user_id,)
+            ).fetchone()
+        return row["status"] if row else None
+
+    def upsert_contact(self, user_id: int, display: str | None, status: str) -> None:
+        now = datetime.utcnow().isoformat()
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO contacts(user_id, display, status, created_at, updated_at)
+                   VALUES (?,?,?,?,?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       status=excluded.status,
+                       display=COALESCE(excluded.display, contacts.display),
+                       updated_at=excluded.updated_at""",
+                (user_id, display, status, now, now),
+            )
+            self._conn.commit()
+
+    def set_contact_status(self, user_id: int, status: str) -> bool:
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE contacts SET status=?, updated_at=? WHERE user_id=?",
+                (status, datetime.utcnow().isoformat(), user_id),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def list_contacts(self, status: str | None = None) -> list[tuple[int, str, str]]:
+        with self._lock:
+            if status:
+                rows = self._conn.execute(
+                    "SELECT user_id, display, status FROM contacts WHERE status=? ORDER BY updated_at DESC",
+                    (status,),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT user_id, display, status FROM contacts ORDER BY updated_at DESC"
+                ).fetchall()
+        return [(r["user_id"], r["display"] or "?", r["status"]) for r in rows]
 
     # ---- per-user notes --------------------------------------------------
     def set_user_note(self, user_id: int, note: str, display: str | None = None) -> None:
