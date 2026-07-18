@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from datetime import date
 
@@ -66,6 +67,76 @@ class Brain:
             if len(roster) >= limit:
                 break
         return roster
+
+    # Words that hint the user wants a message passed along.
+    _RELAY_HINTS = ("بگو", "بهش", "بگه", "بفرست", "برسون", "پیام بده", "سلام برسون",
+                    "tell", "say to", "pass ")
+
+    async def plan(
+        self,
+        user_id: int,
+        text: str,
+        sender_name: str | None = None,
+        relationship: str = "friend",
+    ) -> dict:
+        """Decide what to do with an incoming message.
+
+        Returns either {"kind": "reply", "text": ...} or a relay action
+        {"kind": "relay", "to_id", "to_name", "text", "ack"}.
+        Relay is only ever considered for approved friends, never public strangers.
+        """
+        if relationship == "friend":
+            det = await self._detect_relay(text)
+            if det:
+                who, message = det
+                matches = [m for m in self.memory.find_contacts_by_name(who) if m[0] != user_id]
+                if matches:
+                    to_id, to_name = matches[0]
+                    relay = await self.compose_relay(sender_name or "دوستت", message)
+                    self.memory.add_message(user_id, "user", text)
+                    ack = f"چشم، به {to_name} رسوندم 🌸"
+                    self.memory.add_message(user_id, "assistant", ack)
+                    return {"kind": "relay", "to_id": to_id, "to_name": to_name,
+                            "text": relay, "ack": ack}
+        reply = await self.reply(user_id, text, display=sender_name, relationship=relationship)
+        return {"kind": "reply", "text": reply}
+
+    async def _detect_relay(self, text: str) -> tuple[str, str] | None:
+        """Detect 'tell <friend> <message>' intent. Returns (who, message) or None."""
+        friends = [d for _, d, _ in self.memory.list_contacts("approved") if d]
+        if not friends:
+            return None
+        low = text.lower()
+        # Cheap pre-filter: skip the extra LLM call unless a friend name or a
+        # relay hint word is present.
+        if not (any(f.lower() in low for f in friends)
+                or any(h in low for h in self._RELAY_HINTS)):
+            return None
+        names = ", ".join(friends)
+        system = (
+            "You decide whether the user is asking Mahsa to pass a message to one of "
+            f"her friends. Her friends are: {names}. Respond with JSON only: "
+            '{"relay": true or false, "who": "<the friend\'s name or empty>", '
+            '"message": "<what to tell that friend, or empty>"}. Set relay=true ONLY '
+            "if the user clearly asks to tell/say/pass something to a specific named "
+            "friend from that list; otherwise false."
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": text},
+        ]
+        try:
+            raw = await asyncio.to_thread(self.engine.chat_json, messages)
+            data = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            return None
+        if not data.get("relay"):
+            return None
+        who = str(data.get("who", "")).strip()
+        message = str(data.get("message", "")).strip()
+        if not who or not message:
+            return None
+        return who, message
 
     async def compose_relay(self, from_name: str, content: str) -> str:
         """Write, in Mahsa's voice, a short message passing `content` from a friend."""

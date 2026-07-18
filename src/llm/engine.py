@@ -80,3 +80,21 @@ class LlamaEngine:
                 stop=["<|eot_id|>", "<|end_of_text|>"],
             )
         return result["choices"][0]["message"]["content"].strip()
+
+    def chat_json(
+        self,
+        messages: list[Message],
+        temperature: float = 0.1,
+        max_tokens: int = 200,
+    ) -> str:
+        """Chat completion constrained to valid JSON (for intent detection)."""
+        if self._llm is None:
+            self.load()
+        with self._lock:
+            result = self._llm.create_chat_completion(
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+            )
+        return result["choices"][0]["message"]["content"].strip()

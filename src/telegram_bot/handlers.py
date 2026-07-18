@@ -122,7 +122,7 @@ def register_handlers(
 
         try:
             async with client.action(event.chat_id, "typing"):
-                reply = await brain.reply(uid, text, display=display)
+                result = await brain.plan(uid, text, sender_name=display, relationship="friend")
         except FileNotFoundError as e:
             log.error("Model missing: %s", e)
             await event.reply("(Mahsa is offline — model weights not loaded.)")
@@ -132,7 +132,18 @@ def register_handlers(
             await event.reply("…sorry, my mind went blank for a second. say that again?")
             return
 
-        await event.reply(reply)
+        if result["kind"] == "relay":
+            try:
+                await client.send_message(result["to_id"], result["text"])
+                brain.memory.add_message(result["to_id"], "assistant", result["text"])
+                log.info("Relayed a message to %s.", result["to_name"])
+            except Exception:  # noqa: BLE001
+                log.warning("Relay to %s failed", result["to_name"])
+                await event.reply("خواستم بهش برسونم ولی نشد پیام بدم (شاید هنوز بهم پیام نداده).")
+                return
+            await event.reply(result["ack"])
+        else:
+            await event.reply(result["text"])
 
         # Occasionally refresh the remembered note about this person.
         asyncio.create_task(_maybe_summarise(brain, uid))
