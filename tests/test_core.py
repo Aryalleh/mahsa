@@ -19,7 +19,8 @@ class FakeEngine:
     """Stand-in for LlamaEngine so tests need no model weights."""
 
     def chat(self, messages, temperature=None, max_tokens=None):
-        if any("diary post" in m["content"] for m in messages):
+        # The diary prompt asks for a "یادداشت" (note) for her channel.
+        if any(("یادداشت" in m["content"]) or ("diary" in m["content"]) for m in messages):
             return "Tired but hopeful\nToday moved slowly and I drank too much tea."
         return "hey, that's sweet of you to say"
 

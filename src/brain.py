@@ -68,10 +68,13 @@ class Brain:
                 break
         return roster
 
-    # Words that hint the user wants an action about a friend (relay or recall).
-    _ACTION_HINTS = ("بگو", "بهش", "بگه", "بفرست", "برسون", "پیام بده", "سلام برسون",
-                     "صحبت", "حرف زد", "چت کرد", "چیا گفت", "چی گفت", "گفتگو", "چه خبر",
-                     "tell", "say to", "pass ", "talk", "chat", "what did")
+    # Specific phrases that hint at a relay/recall request. Kept narrow so the
+    # extra intent-detection model call only fires when it's really needed
+    # (broad words like a bare "بگو" or a friend's name were far too common and
+    # doubled latency on ordinary messages).
+    _ACTION_HINTS = ("بهش بگو", "بگو به", "پیام بده", "پیام بفرست", "بفرست به",
+                     "برسون", "سلام برسون", "بهش پیام", "صحبت کرد", "حرف زد",
+                     "چیا گفت", "چی گفت", "چت کرد", "tell ", "message to", "what did you")
 
     async def plan(
         self,
@@ -119,8 +122,9 @@ class Brain:
         if not friends:
             return ("none", "", "")
         low = text.lower()
-        if not (any(f.lower() in low for f in friends)
-                or any(h in low for h in self._ACTION_HINTS)):
+        # Only run the extra detection call when an explicit relay/recall phrase
+        # is present — a bare friend-name mention is not enough.
+        if not any(h in low for h in self._ACTION_HINTS):
             return ("none", "", "")
         names = ", ".join(friends)
         system = (
