@@ -467,9 +467,10 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
 
 async def _maybe_summarise(brain: Brain, uid: int) -> None:
     try:
-        # Refresh roughly every time history crosses a small threshold.
+        # Refresh the per-user note only occasionally: it's a whole extra model
+        # generation that competes for the engine, so keep it rare to stay fast.
         turns = brain.memory.recent_turns(uid, brain.max_turns)
-        if len(turns) % 6 == 0:
+        if len(turns) >= 6 and len(turns) % 20 == 0:
             await brain.summarise_user(uid)
     except Exception:  # noqa: BLE001
         log.exception("Failed to summarise user %s", uid)
