@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import date
 
 from .llm import LlamaEngine
@@ -65,6 +66,41 @@ class Brain:
         mood, entry = await self.write_daily_entry()
         journal_id = self.memory.add_journal(entry=entry, mood=mood)
         return journal_id, entry
+
+    # ---- service-bot menu navigation ------------------------------------
+    async def choose_button(self, bot_text: str, labels: list[str]) -> int | None:
+        """Pick which inline ("glass") button to press on a menu bot, or None.
+
+        Given the bot's message and its button labels, the model returns the
+        index of the button that best continues the interaction.
+        """
+        if not labels:
+            return None
+        numbered = "\n".join(f"{i}: {l}" for i, l in enumerate(labels))
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are navigating a Telegram service/menu bot. You are shown "
+                    "the bot's latest message and a numbered list of its buttons. "
+                    "Pick the ONE button that best continues the interaction in a "
+                    "natural, sensible way. Answer with ONLY that number. If none "
+                    "make sense, answer 'none'."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Bot message:\n{bot_text}\n\nButtons:\n{numbered}\n\nAnswer:",
+            },
+        ]
+        ans = (await asyncio.to_thread(self.engine.chat, messages, 0.2, 8)).strip().lower()
+        if "none" in ans:
+            return None
+        m = re.search(r"\d+", ans)
+        if not m:
+            return None
+        idx = int(m.group())
+        return idx if 0 <= idx < len(labels) else None
 
     @staticmethod
     def _split_mood(text: str) -> tuple[str, str]:

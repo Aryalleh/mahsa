@@ -61,9 +61,11 @@ def register_handlers(
         if not text:
             return
 
-        # Never engage other bots — avoids pointless bot-to-bot loops.
+        # Ignore *unapproved* bots (avoids bot-to-bot spam/loops), but allow bots
+        # the admin has explicitly approved (e.g. via /approve <bot_id>).
         if getattr(sender, "bot", False):
-            return
+            if not is_admin(uid) and brain.memory.get_contact_status(uid) != "approved":
+                return
 
         # ---- admin commands ---------------------------------------------
         if text.startswith("/"):
@@ -98,6 +100,12 @@ def register_handlers(
                 return
 
         log.info("Message from %s (%s): %s", display, uid, text[:80])
+
+        # Approved service/menu bots: if the message has inline ("glass") buttons,
+        # let Mahsa pick and press one instead of sending a persona chat reply.
+        if getattr(sender, "bot", False):
+            if await _handle_bot_buttons(event, brain):
+                return
 
         try:
             async with client.action(event.chat_id, "typing"):
@@ -158,6 +166,40 @@ async def _handle_style_command(client, event, text: str, brain: Brain) -> bool:
             "Couldn't read that channel — is it public and spelled right? "
             "(Private channels I'm not a member of won't work.)"
         )
+    return True
+
+
+async def _handle_bot_buttons(event, brain: Brain) -> bool:
+    """For an approved menu bot: let Mahsa choose and click a button.
+
+    Returns True if the message had buttons (so we should NOT also send a chat
+    reply), False if there were none (fall through to a normal text reply).
+    """
+    rows = getattr(event.message, "buttons", None) or []
+    flat = []  # (row, col, label)
+    for i, row in enumerate(rows):
+        for j, btn in enumerate(row):
+            flat.append((i, j, getattr(btn, "text", "") or ""))
+    if not flat:
+        return False
+
+    labels = [lbl for _, _, lbl in flat]
+    try:
+        idx = await brain.choose_button(event.raw_text or "", labels)
+    except Exception:  # noqa: BLE001
+        log.exception("Failed to choose a button")
+        return True  # had buttons; just don't chat at it
+
+    if idx is None:
+        log.info("Mahsa chose to press no button (buttons: %s).", labels)
+        return True
+
+    i, j, label = flat[idx]
+    try:
+        await event.message.click(i, j)
+        log.info("Mahsa pressed button '%s'.", label)
+    except Exception:  # noqa: BLE001
+        log.exception("Failed to press button '%s'", label)
     return True
 
 
