@@ -214,11 +214,15 @@ class Brain:
         """Compose today's diary entry. Returns (mood, entry_text)."""
         system = self.persona.journal_system_prompt(self.memory)
         prompt = (
-            f"Today is {date.today().strftime('%A, %B %d')}. Write a short, "
-            "first-person diary post for your public channel about how your day "
-            "felt and what you are feeling. Two to five sentences, warm and "
-            "honest, in your own voice. Start with one line that names your mood "
-            "in a few words, then the entry. Do not use headings or bullet points."
+          
+            f"امروز {date.today().strftime('%A, %B %d')} است. "
+            "برای کانالت یک یادداشت بنویس که خواننده احساس کند با یک انسان واقعی روبه‌روست. "
+            "می‌توانی از یک تصویر ذهنی، یک سؤال، یک گفت‌وگوی خیالی، یک خاطره، یک مشاهده از طبیعت یا شهر، یا یک فکر ناگهانی شروع کنی. "
+            "هیچ دو یادداشتی نباید شبیه هم باشند. "
+            "از تکرار ساختار جمله‌ها و واژه‌های همیشگی خودداری کن. "
+            "گاهی طنز ظریف، گاهی احساسات عمیق و گاهی سکوت و ابهام را وارد متن کن. "
+            "همیشه فقط به زبان فارسی بنویس و بین ۳ تا ۶ جمله بنویس."
+
         )
         messages = [
             {"role": "system", "content": system},
