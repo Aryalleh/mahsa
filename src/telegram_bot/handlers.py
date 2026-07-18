@@ -396,10 +396,8 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
                 await event.reply(f"«{target_raw}» رو توی دوستام پیدا نکردم. /friends رو ببین.")
                 return True
 
-        sender = await event.get_sender()
-        from_name = getattr(sender, "first_name", None) or "یکی از دوستات"
         to_name = target_raw.lstrip("@") if not target_raw.lstrip("-").isdigit() else "دوستت"
-        relay = brain.compose_relay(from_name, to_name, message)
+        relay = await brain.compose_relay(to_name, message)
         try:
             await client.send_message(recipient, relay)
             if isinstance(recipient, int):

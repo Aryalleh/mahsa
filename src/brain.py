@@ -68,9 +68,10 @@ class Brain:
                 break
         return roster
 
-    # Words that hint the user wants a message passed along.
-    _RELAY_HINTS = ("بگو", "بهش", "بگه", "بفرست", "برسون", "پیام بده", "سلام برسون",
-                    "tell", "say to", "pass ")
+    # Words that hint the user wants an action about a friend (relay or recall).
+    _ACTION_HINTS = ("بگو", "بهش", "بگه", "بفرست", "برسون", "پیام بده", "سلام برسون",
+                     "صحبت", "حرف زد", "چت کرد", "چیا گفت", "چی گفت", "گفتگو", "چه خبر",
+                     "tell", "say to", "pass ", "talk", "chat", "what did")
 
     async def plan(
         self,
@@ -81,48 +82,55 @@ class Brain:
     ) -> dict:
         """Decide what to do with an incoming message.
 
-        Returns either {"kind": "reply", "text": ...} or a relay action
-        {"kind": "relay", "to_id", "to_name", "text", "ack"}.
-        Relay is only ever considered for approved friends, never public strangers.
+        Returns {"kind": "reply", "text": ...} or a relay action
+        {"kind": "relay", "to_id", "to_name", "text", "user_text"}.
+        Relay/recall are only considered for approved friends and admins.
+        Recall (summarising chats with another friend) is admins-only.
         """
         if relationship in ("friend", "admin"):
-            det = await self._detect_relay(text)
-            if det:
-                who, message = det
+            action, who, message = await self._detect_action(text)
+            if action in ("relay", "recall") and who:
                 matches = [m for m in self.memory.find_contacts_by_name(who) if m[0] != user_id]
-                if matches:
-                    to_id, to_name = matches[0]
-                    relay = self.compose_relay(sender_name or "دوستت", to_name, message)
+                if not matches:
+                    self.memory.add_message(user_id, "user", text)
+                    ack = f"«{who}» رو توی دوستام پیدا نکردم. مطمئنی اسمش درسته؟"
+                    self.memory.add_message(user_id, "assistant", ack)
+                    return {"kind": "reply", "text": ack}
+                to_id, to_name = matches[0]
+                if action == "relay":
+                    relay = await self.compose_relay(to_name, message)
                     return {"kind": "relay", "to_id": to_id, "to_name": to_name,
                             "text": relay, "user_text": text}
-                # Detected a relay request but couldn't match the friend — say so
-                # honestly instead of pretending it was delivered.
-                self.memory.add_message(user_id, "user", text)
-                ack = f"«{who}» رو توی دوستام پیدا نکردم. مطمئنی اسمش درسته؟"
-                self.memory.add_message(user_id, "assistant", ack)
-                return {"kind": "reply", "text": ack}
+                if action == "recall" and relationship == "admin":
+                    self.memory.add_message(user_id, "user", text)
+                    summary = await self.summarise_chat_with(to_id, to_name)
+                    self.memory.add_message(user_id, "assistant", summary)
+                    return {"kind": "reply", "text": summary}
         reply = await self.reply(user_id, text, display=sender_name, relationship=relationship)
         return {"kind": "reply", "text": reply}
 
-    async def _detect_relay(self, text: str) -> tuple[str, str] | None:
-        """Detect 'tell <friend> <message>' intent. Returns (who, message) or None."""
-        friends = [d for _, d, _ in self.memory.list_contacts("approved") if d]
+    async def _detect_action(self, text: str) -> tuple[str, str, str]:
+        """Classify intent about a friend. Returns (action, who, message).
+
+        action is 'relay' (tell a friend something), 'recall' (what did you talk
+        about with a friend), or 'none'.
+        """
+        friends = [d for _, d, _ in self.memory.list_contacts("approved") if d and d != "?"]
         if not friends:
-            return None
+            return ("none", "", "")
         low = text.lower()
-        # Cheap pre-filter: skip the extra LLM call unless a friend name or a
-        # relay hint word is present.
         if not (any(f.lower() in low for f in friends)
-                or any(h in low for h in self._RELAY_HINTS)):
-            return None
+                or any(h in low for h in self._ACTION_HINTS)):
+            return ("none", "", "")
         names = ", ".join(friends)
         system = (
-            "You decide whether the user is asking Mahsa to pass a message to one of "
-            f"her friends. Her friends are: {names}. Respond with JSON only: "
-            '{"relay": true or false, "who": "<the friend\'s name or empty>", '
-            '"message": "<what to tell that friend, or empty>"}. Set relay=true ONLY '
-            "if the user clearly asks to tell/say/pass something to a specific named "
-            "friend from that list; otherwise false."
+            "You classify what the user wants Mahsa to do about one of her friends. "
+            f"Her friends are: {names}. Respond with JSON only: "
+            '{"action": "relay" | "recall" | "none", "who": "<friend name or empty>", '
+            '"message": "<for relay: what to tell them; else empty>"}. '
+            '"relay" = the user asks Mahsa to tell/send something to a named friend. '
+            '"recall" = the user asks what Mahsa talked about / said with a named friend. '
+            '"none" = anything else.'
         )
         messages = [
             {"role": "system", "content": system},
@@ -132,24 +140,74 @@ class Brain:
             raw = await asyncio.to_thread(self.engine.chat_json, messages)
             data = json.loads(raw)
         except Exception:  # noqa: BLE001
-            return None
-        if not data.get("relay"):
-            return None
+            return ("none", "", "")
+        action = str(data.get("action", "none")).strip().lower()
         who = str(data.get("who", "")).strip()
         message = str(data.get("message", "")).strip()
-        if not who or not message:
-            return None
-        return who, message
+        if action == "relay" and who and message:
+            return ("relay", who, message)
+        if action == "recall" and who:
+            return ("recall", who, "")
+        return ("none", "", "")
+
+    async def compose_relay(self, to_name: str, content: str) -> str:
+        """Write the relay message in Mahsa's OWN voice, first person, no quotes.
+
+        Falls back to a plain template if the model refuses or leaks (e.g. a
+        Chinese chain-of-thought), so a message always goes out.
+        """
+        system = self.persona.chat_system_prompt(self.memory)
+        prompt = (
+            f"Send a short Telegram message to your friend {to_name}, in your OWN "
+            f"voice, first person, saying this naturally: {content}. Do NOT use "
+            "quotation marks and do NOT say that someone told you to say it — just "
+            "say it warmly as yourself. One or two lines."
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+        try:
+            text = (await asyncio.to_thread(self.engine.chat, messages, 0.7, 120)).strip()
+        except Exception:  # noqa: BLE001
+            text = ""
+        text = text.strip().strip("«»\"'")
+        if self._looks_bad(text):
+            return f"سلام {to_name} جان 🌸 {content}"
+        return text
+
+    async def summarise_chat_with(self, friend_id: int, friend_name: str) -> str:
+        """Summarise, in Mahsa's voice, what she and a given friend talked about."""
+        turns = self.memory.recent_turns(friend_id, self.max_turns)
+        if not turns:
+            return f"راستش هنوز با {friend_name} چت نکردم."
+        transcript = "\n".join(
+            f"{'من' if t.role == 'assistant' else friend_name}: {t.content}" for t in turns
+        )
+        system = self.persona.chat_system_prompt(self.memory)
+        prompt = (
+            f"Your admin asks what you and {friend_name} have been talking about. "
+            f"Here is your recent chat with {friend_name}:\n{transcript}\n\n"
+            "Tell the admin, in your own voice and a few short sentences, what the two "
+            "of you talked about."
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+        return await asyncio.to_thread(self.engine.chat, messages, 0.5, 220)
 
     @staticmethod
-    def compose_relay(from_name: str, to_name: str, content: str) -> str:
-        """A fixed relay template.
-
-        Deliberately NOT model-generated: letting the LLM rewrite the message
-        triggered refusals and leaked its internal reasoning. A template always
-        delivers exactly what the sender asked, in Mahsa's warm style.
-        """
-        return f"سلام {to_name} جان 🌸 {from_name} گفت بهت بگم: «{content}»"
+    def _looks_bad(text: str) -> bool:
+        """True if the model output is empty, a refusal, or leaked other languages."""
+        if not text or len(text) < 2:
+            return True
+        if any("　" <= c <= "鿿" for c in text):  # CJK leak
+            return True
+        low = text.lower()
+        bad = ("نمیتونم", "نمی‌تونم", "نمی‌توانم", "نميتوانم", "cannot", "can't",
+               "won't", "i'm sorry", "as an ai", "抱歉")
+        return any(b in low for b in bad)
 
     # ---- daily emotional diary post -------------------------------------
     async def write_daily_entry(self) -> tuple[str, str]:
