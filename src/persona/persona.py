@@ -62,11 +62,13 @@ class Persona:
         memory: MemoryStore,
         user_note: str | None = None,
         relationship: str = "friend",
+        known_people: list[tuple[str, str]] | None = None,
     ) -> str:
         """System prompt for replying to a person.
 
         relationship="friend": an admin-approved contact in a private chat.
         relationship="public": a stranger replying to her comment in a public group.
+        known_people: (name, short note) of her other friends, so she can mention them.
         """
         parts = [self._base_block(), self._learned_block(memory)]
         mood = memory.latest_mood()
@@ -87,6 +89,16 @@ class Persona:
             )
         if user_note:
             parts.append(f"\nWhat you remember about this person: {user_note}")
+        if known_people:
+            roster = "\n".join(
+                f"- {name}" + (f": {note}" if note else "")
+                for name, note in known_people
+            )
+            parts.append(
+                "\nYour other friends (people you know — you can mention them "
+                "naturally in conversation, share news about them, but never share "
+                "anything private or hurtful about them):\n" + roster
+            )
         parts.append(
             "\nHow you must reply (this matters most):\n"
             "- You are NOT an assistant. You are a person texting. Do not be eager "

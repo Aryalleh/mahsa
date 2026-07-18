@@ -87,6 +87,7 @@ class Config:
     memory_max_turns: int
     schedule_watch: "WatchConfig | None" = None
     whitelist_enabled: bool = True
+    group_chat_enabled: bool = True
     admin_user_ids: list[int] = field(default_factory=list)
 
 
@@ -125,5 +126,6 @@ def load_config() -> Config:
             max_delay=_get_int("CHANNEL_MAX_DELAY", 45),
         ),
         whitelist_enabled=_get_bool("WHITELIST_ENABLED", True),
+        group_chat_enabled=_get_bool("GROUP_CHAT_ENABLED", True),
         admin_user_ids=admins,
     )

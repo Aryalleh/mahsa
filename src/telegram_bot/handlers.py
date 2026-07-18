@@ -31,6 +31,7 @@ HELP_TEXT = (
     "/approve <uid>  — let Mahsa chat with this person (a friend)\n"
     "/block <uid>    — block this person\n"
     "/friends        — list approved friends\n"
+    "/name <uid> <name> — give a friend a name Mahsa uses\n"
     "/mood           — show her current mood\n"
     "/post           — write & publish today's diary post now\n"
     "/reset <uid>    — clear a user's conversation history\n"
@@ -47,6 +48,7 @@ def register_handlers(
     whitelist_enabled: bool = True,
     watch=None,             # config.WatchConfig | None
     own_channel: str = "",  # Mahsa's own channel, skipped when following others
+    group_chat_enabled: bool = True,
 ) -> None:
 
     def is_admin(uid: int) -> bool:
@@ -176,40 +178,56 @@ def register_handlers(
                 except Exception:  # noqa: BLE001
                     log.debug("Comments not open on %s; skipped comment.", uname or event.chat_id)
 
+        log.info("Channel-watching on (react=%s, comment=%s, chance=%.2f).",
+                 watch.react, watch.comment, watch.chance)
+
+    # ---- group chat: reply when replied-to, mentioned, or named ---------
+    if group_chat_enabled or (watch and getattr(watch, "enabled", False)):
+
+        persona_name = brain.persona.name
+
         @client.on(events.NewMessage(func=lambda e: e.is_group))
-        async def on_group_reply(event: events.NewMessage.Event):
-            # Only answer when someone replies to one of MAHSA's own comments.
-            if event.out or not event.is_reply:
+        async def on_group_message(event: events.NewMessage.Event):
+            if event.out:
                 return
             sender = await event.get_sender()
             if getattr(sender, "bot", False):
-                return
-            replied = await event.get_reply_message()
-            if not replied or replied.sender_id != await my_id():
                 return
             text = (event.raw_text or "").strip()
             if not text:
                 return
 
+            # Should she chime in? Only when clearly addressed.
+            is_reply_to_me = False
+            if event.is_reply:
+                replied = await event.get_reply_message()
+                is_reply_to_me = bool(replied and replied.sender_id == await my_id())
+            mentioned = bool(getattr(event.message, "mentioned", False))
+            named = persona_name.lower() in text.lower() or "مهسا" in text
+            if not (is_reply_to_me or mentioned or named):
+                return
+
+            # Approved friends get her warm tone; anyone else gets the public tone.
+            status = brain.memory.get_contact_status(event.sender_id)
+            relationship = "friend" if (is_admin(event.sender_id) or status == "approved") else "public"
+
             display = getattr(sender, "first_name", None)
-            log.info("Reply to Mahsa's comment from %s (%s): %s",
+            log.info("Group message addressing Mahsa from %s (%s): %s",
                      display, event.sender_id, text[:80])
-            await asyncio.sleep(random.uniform(2, 15))  # human-like pause
+            await asyncio.sleep(random.uniform(2, 12))  # human-like pause
             try:
                 async with client.action(event.chat_id, "typing"):
-                    # Stranger in public → the lighter, non-intimate persona.
                     reply = await brain.reply(
-                        event.sender_id, text, display=display, relationship="public"
+                        event.sender_id, text, display=display, relationship=relationship
                     )
             except FileNotFoundError:
                 return
             except Exception:  # noqa: BLE001
-                log.exception("Failed to reply in discussion group")
+                log.exception("Failed to reply in group")
                 return
             await event.reply(reply)
 
-        log.info("Channel-watching on (react=%s, comment=%s, chance=%.2f).",
-                 watch.react, watch.comment, watch.chance)
+        log.info("Group chat on (name=%s).", persona_name)
 
     log.info("Handlers registered (admins=%s).", admin_ids)
 
@@ -327,8 +345,18 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
     """Whitelist admin commands: /approve /block /pending /friends. Returns True if handled."""
     parts = text.split()
     cmd = parts[0].lower().lstrip("/")
-    if cmd not in {"approve", "block", "pending", "friends"}:
+    if cmd not in {"approve", "block", "pending", "friends", "name"}:
         return False
+
+    if cmd == "name":
+        # /name <uid> <name...>  — give a friend a name Mahsa will use
+        bits = text.split(maxsplit=2)
+        if len(bits) < 3 or not bits[1].lstrip("-").isdigit():
+            await event.reply("Usage: /name <user id> <name>")
+        else:
+            brain.memory.set_contact_display(int(bits[1]), bits[2].strip())
+            await event.reply(f"باشه، از این به بعد اون رو «{bits[2].strip()}» صدا می‌زنم.")
+        return True
 
     if cmd == "pending":
         rows = brain.memory.list_contacts("pending")
@@ -357,10 +385,15 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
     if cmd == "approve":
         brain.memory.upsert_contact(target, None, "approved")
         await event.reply(f"✅ {target} تأیید شد. حالا مهسا باهاش راحت چت می‌کنه.")
-        try:
-            await client.send_message(target, "سلام دوباره 🌸 ببخشید معطل شدی، بگو چه خبر؟")
-        except Exception:  # noqa: BLE001
-            log.exception("Could not greet approved user %s", target)
+        # Only greet real users. Negative ids are channels/groups (can't be DMed).
+        if target > 0:
+            try:
+                await client.send_message(target, "سلام دوباره 🌸 ببخشید معطل شدی، بگو چه خبر؟")
+            except Exception:  # noqa: BLE001
+                log.warning("Approved %s but couldn't send greeting.", target)
+                await event.reply(
+                    "تأیید شد، ولی نتونستم بهش سلام بدم (شاید هنوز به من پیام نداده)."
+                )
     else:  # block
         brain.memory.upsert_contact(target, None, "blocked")
         await event.reply(f"🚫 {target} بلاک شد.")

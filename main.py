@@ -73,6 +73,7 @@ async def run() -> None:
         whitelist_enabled=cfg.whitelist_enabled,
         watch=cfg.schedule_watch,
         own_channel=cfg.telegram.channel,
+        group_chat_enabled=cfg.group_chat_enabled,
     )
 
     log.info("Connecting to Telegram as %s ...", cfg.telegram.phone)

@@ -37,8 +37,9 @@ class Brain:
         """Generate Mahsa's reply to a user's message and persist the exchange."""
         self.memory.add_message(user_id, "user", text)
         note = self.memory.get_user_note(user_id)
+        known = self._friends_roster(exclude=user_id)
         system = self.persona.chat_system_prompt(
-            self.memory, user_note=note, relationship=relationship
+            self.memory, user_note=note, relationship=relationship, known_people=known
         )
 
         history = self.memory.recent_turns(user_id, self.max_turns)
@@ -49,6 +50,22 @@ class Brain:
         answer = await asyncio.to_thread(self.engine.chat, messages)
         self.memory.add_message(user_id, "assistant", answer)
         return answer
+
+    def _friends_roster(self, exclude: int, limit: int = 12) -> list[tuple[str, str]]:
+        """Her approved friends as (name, short note), so she can mention them."""
+        roster: list[tuple[str, str]] = []
+        for fid, display, _ in self.memory.list_contacts("approved"):
+            if fid == exclude:
+                continue
+            note = self.memory.get_user_note(fid) or ""
+            # keep it to the first sentence so prompts stay small
+            short = note.split(".")[0].strip()
+            if len(short) > 120:
+                short = short[:120].rstrip() + "…"
+            roster.append((display or "?", short))
+            if len(roster) >= limit:
+                break
+        return roster
 
     # ---- daily emotional diary post -------------------------------------
     async def write_daily_entry(self) -> tuple[str, str]:

@@ -247,6 +247,14 @@ class MemoryStore:
             self._conn.commit()
             return cur.rowcount > 0
 
+    def set_contact_display(self, user_id: int, display: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE contacts SET display=?, updated_at=? WHERE user_id=?",
+                (display, datetime.utcnow().isoformat(), user_id),
+            )
+            self._conn.commit()
+
     def list_contacts(self, status: str | None = None) -> list[tuple[int, str, str]]:
         with self._lock:
             if status:
