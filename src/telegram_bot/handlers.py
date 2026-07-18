@@ -121,9 +121,10 @@ def register_handlers(
             if await _handle_bot_buttons(event, brain):
                 return
 
+        rel = "admin" if is_admin(uid) else "friend"
         try:
             async with client.action(event.chat_id, "typing"):
-                result = await brain.plan(uid, text, sender_name=display, relationship="friend")
+                result = await brain.plan(uid, text, sender_name=display, relationship=rel)
         except FileNotFoundError as e:
             log.error("Model missing: %s", e)
             await event.reply("(Mahsa is offline — model weights not loaded.)")

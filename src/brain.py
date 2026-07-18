@@ -85,7 +85,7 @@ class Brain:
         {"kind": "relay", "to_id", "to_name", "text", "ack"}.
         Relay is only ever considered for approved friends, never public strangers.
         """
-        if relationship == "friend":
+        if relationship in ("friend", "admin"):
             det = await self._detect_relay(text)
             if det:
                 who, message = det
