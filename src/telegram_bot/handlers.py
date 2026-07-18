@@ -33,6 +33,9 @@ HELP_TEXT = (
     "/friends        — list approved friends\n"
     "/name <uid> <name> — give a friend a name Mahsa uses\n"
     "/tell <name|@user|id> <msg> — have Mahsa pass a message to a friend\n"
+    "/lover <uid>    — mark a consenting adult for intimate mode (no admin powers)\n"
+    "/unlover <uid>  — remove lover status\n"
+    "/lovers         — list lovers\n"
     "/mood           — show her current mood\n"
     "/post           — write & publish today's diary post now\n"
     "/reset <uid>    — clear a user's conversation history\n"
@@ -121,7 +124,12 @@ def register_handlers(
             if await _handle_bot_buttons(event, brain):
                 return
 
-        rel = "admin" if is_admin(uid) else "friend"
+        if is_admin(uid):
+            rel = "admin"
+        elif brain.memory.is_lover(uid):
+            rel = "lover"       # intimate chat, but no admin powers
+        else:
+            rel = "friend"
         try:
             async with client.action(event.chat_id, "typing"):
                 result = await brain.plan(uid, text, sender_name=display, relationship=rel)
@@ -366,8 +374,36 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
     """Whitelist admin commands: /approve /block /pending /friends. Returns True if handled."""
     parts = text.split()
     cmd = parts[0].lower().lstrip("/")
-    if cmd not in {"approve", "block", "pending", "friends", "name", "tell"}:
+    if cmd not in {"approve", "block", "pending", "friends", "name", "tell",
+                   "lover", "unlover", "lovers"}:
         return False
+
+    if cmd == "lovers":
+        rows = brain.memory.list_lovers()
+        if not rows:
+            await event.reply("هنوز کسی به‌عنوان lover ثبت نشده.")
+        else:
+            await event.reply("Lovers (حالت صمیمی):\n" +
+                              "\n".join(f"• {d} — {u}" for u, d in rows))
+        return True
+
+    if cmd in ("lover", "unlover"):
+        if len(parts) < 2 or not parts[1].lstrip("-").isdigit():
+            await event.reply(f"Usage: /{cmd} <user id>")
+            return True
+        target = int(parts[1])
+        if cmd == "lover":
+            # Approve + mark as lover so they get intimate mode (no admin powers).
+            brain.memory.upsert_contact(target, None, "approved")
+            brain.memory.add_lover(target)
+            await event.reply(
+                f"❤️ {target} به‌عنوان lover ثبت شد. مهسا باهاش صمیمیه — ولی دستور "
+                "ادمین یا خوندن چت بقیه رو نداره."
+            )
+        else:
+            ok = brain.memory.remove_lover(target)
+            await event.reply("برداشته شد." if ok else "این آیدی lover نبود.")
+        return True
 
     if cmd == "tell":
         # /tell <name | @username | id> <message>  → Mahsa DMs that friend

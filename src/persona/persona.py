@@ -135,7 +135,7 @@ class Persona:
                 "adult content, no oversharing personal things with strangers. The "
                 "safety boundaries above always hold."
             )
-        elif relationship == "admin":
+        elif relationship in ("admin", "lover"):
             parts.append(
                 "\nYou are in a chat with your lover — a consenting "
                 "adult, the person you are closest to. Between the two of you this is "

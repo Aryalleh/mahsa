@@ -90,7 +90,7 @@ class Brain:
         Relay/recall are only considered for approved friends and admins.
         Recall (summarising chats with another friend) is admins-only.
         """
-        if relationship in ("friend", "admin"):
+        if relationship in ("friend", "admin", "lover"):
             action, who, message = await self._detect_action(text)
             if action in ("relay", "recall") and who:
                 matches = [m for m in self.memory.find_contacts_by_name(who) if m[0] != user_id]

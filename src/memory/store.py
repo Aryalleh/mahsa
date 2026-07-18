@@ -63,6 +63,11 @@ CREATE TABLE IF NOT EXISTS contacts (
     created_at TEXT   NOT NULL,
     updated_at TEXT   NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS lovers (
+    user_id   INTEGER PRIMARY KEY,   -- consenting adults who get the intimate mode
+    created_at TEXT   NOT NULL
+);
 """
 
 
@@ -279,6 +284,37 @@ class MemoryStore:
                     "SELECT user_id, display, status FROM contacts ORDER BY updated_at DESC"
                 ).fetchall()
         return [(r["user_id"], r["display"] or "?", r["status"]) for r in rows]
+
+    # ---- lovers (intimate chat mode, without admin powers) --------------
+    def add_lover(self, user_id: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO lovers(user_id, created_at) VALUES (?,?)",
+                (user_id, datetime.utcnow().isoformat()),
+            )
+            self._conn.commit()
+
+    def remove_lover(self, user_id: int) -> bool:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM lovers WHERE user_id=?", (user_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def is_lover(self, user_id: int) -> bool:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM lovers WHERE user_id=?", (user_id,)
+            ).fetchone()
+        return row is not None
+
+    def list_lovers(self) -> list[tuple[int, str]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT l.user_id, COALESCE(c.display, '?')
+                   FROM lovers l LEFT JOIN contacts c ON c.user_id = l.user_id
+                   ORDER BY l.created_at DESC"""
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]
 
     # ---- per-user notes --------------------------------------------------
     def set_user_note(self, user_id: int, note: str, display: str | None = None) -> None:
