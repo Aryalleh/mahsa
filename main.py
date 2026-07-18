@@ -78,6 +78,22 @@ async def run() -> None:
     me = await client.get_me()
     log.info("Logged in as %s (id=%s).", getattr(me, "first_name", "?"), me.id)
 
+    # Warm Telethon's entity cache so Mahsa can DM admins by id, then check that
+    # each admin is reachable (they must have messaged this account at least once).
+    try:
+        await client.get_dialogs()
+    except Exception:  # noqa: BLE001
+        log.warning("Could not preload dialogs to warm the entity cache.")
+    for admin in cfg.telegram.admin_user_ids:
+        try:
+            await client.get_input_entity(admin)
+        except Exception:  # noqa: BLE001
+            log.warning(
+                "Admin %s is not reachable yet — that admin must open Telegram and "
+                "send Mahsa's account one direct message so she can notify them.",
+                admin,
+            )
+
     if cfg.schedule.enabled:
         poster.start()
     else:

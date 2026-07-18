@@ -61,6 +61,10 @@ def register_handlers(
         if not text:
             return
 
+        # Never engage other bots — avoids pointless bot-to-bot loops.
+        if getattr(sender, "bot", False):
+            return
+
         # ---- admin commands ---------------------------------------------
         if text.startswith("/"):
             # Style + contact commands need the client (channels / messaging users).
@@ -168,9 +172,24 @@ async def _notify_admins_new_contact(client, admin_ids, uid, display, first_msg)
         f"دوستته؟ برای تأیید: /approve {uid}\n"
         f"برای بلاک: /block {uid}"
     )
+    warmed = False
     for admin in admin_ids:
         try:
             await client.send_message(admin, text)
+        except ValueError:
+            # Telethon hasn't cached this admin's entity yet. Warm the dialog
+            # cache once and retry; if that still fails, the admin has never
+            # DMed this account, so we can't initiate a chat with them.
+            try:
+                if not warmed:
+                    await client.get_dialogs()
+                    warmed = True
+                await client.send_message(admin, text)
+            except Exception:  # noqa: BLE001
+                log.warning(
+                    "Could not reach admin %s. They must send Mahsa one direct "
+                    "message so she can DM them back.", admin
+                )
         except Exception:  # noqa: BLE001
             log.exception("Could not notify admin %s", admin)
 
