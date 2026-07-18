@@ -74,6 +74,9 @@ class LlamaEngine:
                 messages=messages,
                 temperature=self.temperature if temperature is None else temperature,
                 max_tokens=self.max_tokens if max_tokens is None else max_tokens,
+                top_p=0.9,
+                top_k=40,
+                repeat_penalty=1.15,  # discourages the looping/rambling small quants do
                 stop=["<|eot_id|>", "<|end_of_text|>"],
             )
         return result["choices"][0]["message"]["content"].strip()

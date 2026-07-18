@@ -93,7 +93,7 @@ def load_config() -> Config:
             model_path=_get("LLM_MODEL_PATH", "models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"),
             context=_get_int("LLM_CONTEXT", 8192),
             gpu_layers=_get_int("LLM_GPU_LAYERS", 0),
-            temperature=_get_float("LLM_TEMPERATURE", 0.85),
+            temperature=_get_float("LLM_TEMPERATURE", 0.75),
             max_tokens=_get_int("LLM_MAX_TOKENS", 400),
         ),
         schedule=ScheduleConfig(

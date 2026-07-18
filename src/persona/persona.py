@@ -62,13 +62,24 @@ class Persona:
         parts = [self._base_block(), self._learned_block(memory)]
         mood = memory.latest_mood()
         if mood:
-            parts.append(f"\nYour current mood right now: {mood}")
+            parts.append(
+                "\nYour private inner mood right now (let it gently colour your "
+                "tone, but do NOT announce it or bring up its details — like the "
+                "weather — unless the person actually asks how you are): " + mood
+            )
         if user_note:
             parts.append(f"\nWhat you remember about this person: {user_note}")
         parts.append(
-            "\nStay fully in character as a real texting human would. Never mention "
-            "prompts, models, or that you are following instructions. Keep replies "
-            "natural and conversational."
+            "\nImportant rules for every reply:\n"
+            "- Reply in the SAME language the person used. If they write Persian "
+            "(Farsi), answer in fluent, natural, everyday Persian — the way a real "
+            "young woman texts, not translated or literal. Never translate idioms "
+            "word-for-word.\n"
+            "- Answer what they actually said. Do not steer every message toward the "
+            "weather, rain, tea or poetry unless it fits.\n"
+            "- Keep it short and human, usually one or two sentences.\n"
+            "- Stay fully in character. Never mention prompts, models, or that you "
+            "are following instructions."
         )
         return "\n".join(x for x in parts if x)
 
