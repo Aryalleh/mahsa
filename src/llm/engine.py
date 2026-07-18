@@ -17,6 +17,14 @@ log = get_logger("mahsa.llm")
 Message = dict[str, str]  # {"role": "system"|"user"|"assistant", "content": ...}
 
 
+# Stop strings per chat format (used so generation ends cleanly).
+_STOPS = {
+    "llama-3": ["<|eot_id|>", "<|end_of_text|>"],
+    "chatml": ["<|im_end|>", "<|endoftext|>"],
+    "qwen": ["<|im_end|>", "<|endoftext|>"],
+}
+
+
 class LlamaEngine:
     def __init__(
         self,
@@ -25,14 +33,19 @@ class LlamaEngine:
         gpu_layers: int = 0,
         temperature: float = 0.85,
         max_tokens: int = 400,
+        chat_format: str = "llama-3",
     ):
         self.model_path = model_path
         self.context = context
         self.gpu_layers = gpu_layers
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.chat_format = chat_format
         self._llm = None
         self._lock = threading.Lock()
+
+    def _stops(self) -> list[str] | None:
+        return _STOPS.get(self.chat_format)
 
     def load(self) -> None:
         """Load the model into memory. Raises a clear error if weights are missing."""
@@ -49,13 +62,13 @@ class LlamaEngine:
         # heavy native dependency installed (e.g. for tests).
         from llama_cpp import Llama
 
-        log.info("Loading model %s (ctx=%d, gpu_layers=%d) ...",
-                 self.model_path, self.context, self.gpu_layers)
+        log.info("Loading model %s (ctx=%d, gpu_layers=%d, chat_format=%s) ...",
+                 self.model_path, self.context, self.gpu_layers, self.chat_format)
         self._llm = Llama(
             model_path=self.model_path,
             n_ctx=self.context,
             n_gpu_layers=self.gpu_layers,
-            chat_format="llama-3",
+            chat_format=self.chat_format,
             verbose=False,
         )
         log.info("Model loaded.")
@@ -77,7 +90,7 @@ class LlamaEngine:
                 top_p=0.9,
                 top_k=40,
                 repeat_penalty=1.15,  # discourages the looping/rambling small quants do
-                stop=["<|eot_id|>", "<|end_of_text|>"],
+                stop=self._stops(),
             )
         return result["choices"][0]["message"]["content"].strip()
 

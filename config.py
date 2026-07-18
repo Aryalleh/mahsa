@@ -58,6 +58,7 @@ class LLMConfig:
     gpu_layers: int
     temperature: float
     max_tokens: int
+    chat_format: str
 
 
 @dataclass
@@ -108,6 +109,7 @@ def load_config() -> Config:
             gpu_layers=_get_int("LLM_GPU_LAYERS", 0),
             temperature=_get_float("LLM_TEMPERATURE", 0.75),
             max_tokens=_get_int("LLM_MAX_TOKENS", 160),
+            chat_format=_get("LLM_CHAT_FORMAT", "llama-3"),
         ),
         schedule=ScheduleConfig(
             hour=_get_int("DAILY_POST_HOUR", 21),

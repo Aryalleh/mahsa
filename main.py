@@ -44,6 +44,7 @@ async def run() -> None:
         gpu_layers=cfg.llm.gpu_layers,
         temperature=cfg.llm.temperature,
         max_tokens=cfg.llm.max_tokens,
+        chat_format=cfg.llm.chat_format,
     )
     try:
         await asyncio.to_thread(engine.load)
