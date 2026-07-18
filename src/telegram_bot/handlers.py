@@ -32,6 +32,7 @@ HELP_TEXT = (
     "/block <uid>    — block this person\n"
     "/friends        — list approved friends\n"
     "/name <uid> <name> — give a friend a name Mahsa uses\n"
+    "/tell <name|@user|id> <msg> — have Mahsa pass a message to a friend\n"
     "/mood           — show her current mood\n"
     "/post           — write & publish today's diary post now\n"
     "/reset <uid>    — clear a user's conversation history\n"
@@ -345,8 +346,51 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
     """Whitelist admin commands: /approve /block /pending /friends. Returns True if handled."""
     parts = text.split()
     cmd = parts[0].lower().lstrip("/")
-    if cmd not in {"approve", "block", "pending", "friends", "name"}:
+    if cmd not in {"approve", "block", "pending", "friends", "name", "tell"}:
         return False
+
+    if cmd == "tell":
+        # /tell <name | @username | id> <message>  → Mahsa DMs that friend
+        bits = text.split(maxsplit=2)
+        if len(bits) < 3:
+            await event.reply("Usage: /tell <name | @username | id> <message>")
+            return True
+        target_raw, message = bits[1].strip(), bits[2].strip()
+
+        # Resolve the recipient.
+        recipient = None
+        if target_raw.lstrip("-").isdigit():
+            recipient = int(target_raw)
+        elif target_raw.startswith("@"):
+            recipient = target_raw
+        else:
+            matches = brain.memory.find_contacts_by_name(target_raw)
+            if len(matches) == 1:
+                recipient = matches[0][0]
+            elif len(matches) > 1:
+                await event.reply("چند نفر با این اسم دارم:\n" +
+                                  "\n".join(f"• {d} — {u}" for u, d in matches) +
+                                  "\nبا آیدی بگو: /tell <id> <پیام>")
+                return True
+            else:
+                await event.reply(f"«{target_raw}» رو توی دوستام پیدا نکردم. /friends رو ببین.")
+                return True
+
+        sender = await event.get_sender()
+        from_name = getattr(sender, "first_name", None) or "یکی از دوستات"
+        try:
+            relay = await brain.compose_relay(from_name, message)
+        except Exception:  # noqa: BLE001
+            relay = f"{from_name} گفت بهت بگم: {message}"
+        try:
+            await client.send_message(recipient, relay)
+            if isinstance(recipient, int):
+                brain.memory.add_message(recipient, "assistant", relay)
+            await event.reply("رسوندم بهش ✅")
+        except Exception:  # noqa: BLE001
+            log.warning("Relay to %s failed", recipient)
+            await event.reply("نشد بهش پیام بدم — شاید هنوز به من پیام نداده یا آیدی درست نیست.")
+        return True
 
     if cmd == "name":
         # /name <uid> <name...>  — give a friend a name Mahsa will use

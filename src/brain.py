@@ -67,6 +67,20 @@ class Brain:
                 break
         return roster
 
+    async def compose_relay(self, from_name: str, content: str) -> str:
+        """Write, in Mahsa's voice, a short message passing `content` from a friend."""
+        system = self.persona.chat_system_prompt(self.memory)
+        prompt = (
+            f"Your friend {from_name} asked you to pass a message to another friend. "
+            f"The message is: \"{content}\". Write the short, warm text you'd send that "
+            f"friend now, making clear it's from {from_name}. One or two lines, your voice."
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+        return await asyncio.to_thread(self.engine.chat, messages, 0.7, 120)
+
     # ---- daily emotional diary post -------------------------------------
     async def write_daily_entry(self) -> tuple[str, str]:
         """Compose today's diary entry. Returns (mood, entry_text)."""

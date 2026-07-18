@@ -247,6 +247,17 @@ class MemoryStore:
             self._conn.commit()
             return cur.rowcount > 0
 
+    def find_contacts_by_name(self, name: str) -> list[tuple[int, str]]:
+        """Approved contacts whose display name contains `name` (case-insensitive)."""
+        needle = name.strip().lower()
+        if not needle:
+            return []
+        out = []
+        for uid, disp, status in self.list_contacts("approved"):
+            if needle in (disp or "").lower():
+                out.append((uid, disp))
+        return out
+
     def set_contact_display(self, user_id: int, display: str) -> None:
         with self._lock:
             self._conn.execute(
