@@ -22,6 +22,7 @@ _STOPS = {
     "llama-3": ["<|eot_id|>", "<|end_of_text|>"],
     "chatml": ["<|im_end|>", "<|endoftext|>"],
     "qwen": ["<|im_end|>", "<|endoftext|>"],
+    "mistral-instruct": ["</s>"],   # Mistral / Mistral-Nemo (e.g. Rocinante)
 }
 
 
