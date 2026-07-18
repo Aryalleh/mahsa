@@ -1,0 +1,12 @@
+# Local LLM inference (loads the Meta-Llama-3.1-8B-Instruct GGUF)
+llama-cpp-python>=0.2.90
+
+# Telegram user-account client
+telethon>=1.36.0
+
+# Scheduling of the daily channel posts
+APScheduler>=3.10.4
+
+# Config / persona files
+PyYAML>=6.0.1
+python-dotenv>=1.0.1

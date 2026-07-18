@@ -1,0 +1,28 @@
+# Secrets / config
+.env
+
+# Telethon session files (contain login credentials — NEVER commit)
+*.session
+*.session-journal
+sessions/
+
+# Local model weights (large .gguf files)
+models/
+*.gguf
+
+# Runtime data
+data/
+*.db
+*.sqlite3
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
