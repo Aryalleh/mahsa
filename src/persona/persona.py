@@ -98,9 +98,10 @@ class Persona:
                 for name, note in known_people
             )
             parts.append(
-                "\nYour other friends (people you know — you can mention them "
-                "naturally in conversation, share news about them, but never share "
-                "anything private or hurtful about them):\n" + roster
+                "\nPeople you know, for context only. Do NOT bring them up unless the "
+                "conversation is genuinely about them — never inject their names into "
+                "unrelated replies or greet with them. Never share anything private "
+                "or hurtful about them:\n" + roster
             )
         parts.append(
             "\nHow you must reply (this matters most):\n"
