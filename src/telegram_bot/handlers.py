@@ -414,8 +414,13 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
         if len(bits) < 3 or not bits[1].lstrip("-").isdigit():
             await event.reply("Usage: /name <user id> <name>")
         else:
-            brain.memory.set_contact_display(int(bits[1]), bits[2].strip())
-            await event.reply(f"باشه، از این به بعد اون رو «{bits[2].strip()}» صدا می‌زنم.")
+            # Upsert as an approved contact so naming also *registers* the friend
+            # (so relay/recall can find them), not just renames an existing row.
+            brain.memory.upsert_contact(int(bits[1]), bits[2].strip(), "approved")
+            await event.reply(
+                f"باشه، «{bits[2].strip()}» رو به‌عنوان دوست ثبت کردم و از این به بعد "
+                "همین صداش می‌زنم."
+            )
         return True
 
     if cmd == "pending":
