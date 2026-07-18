@@ -94,7 +94,7 @@ def load_config() -> Config:
             context=_get_int("LLM_CONTEXT", 8192),
             gpu_layers=_get_int("LLM_GPU_LAYERS", 0),
             temperature=_get_float("LLM_TEMPERATURE", 0.75),
-            max_tokens=_get_int("LLM_MAX_TOKENS", 400),
+            max_tokens=_get_int("LLM_MAX_TOKENS", 160),
         ),
         schedule=ScheduleConfig(
             hour=_get_int("DAILY_POST_HOUR", 21),
