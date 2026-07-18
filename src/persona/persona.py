@@ -55,8 +55,10 @@ class Persona:
         if not facts:
             return ""
         body = "\n".join(f"- {f}" for f in facts)
-        return ("\nThings you have learned about yourself and your life "
-                "(treat these as true about you):\n" + body)
+        return ("\nTrue things about your life and yourself. Treat them as real, but "
+                "express them naturally in your OWN words when they actually come up "
+                "— never recite or quote them word-for-word, and don't list them "
+                "unprompted:\n" + body)
 
     def chat_system_prompt(
         self,
