@@ -57,8 +57,17 @@ class Persona:
         return ("\nThings you have learned about yourself and your life "
                 "(treat these as true about you):\n" + body)
 
-    def chat_system_prompt(self, memory: MemoryStore, user_note: str | None = None) -> str:
-        """System prompt used when replying to a person in a private chat."""
+    def chat_system_prompt(
+        self,
+        memory: MemoryStore,
+        user_note: str | None = None,
+        relationship: str = "friend",
+    ) -> str:
+        """System prompt for replying to a person.
+
+        relationship="friend": an admin-approved contact in a private chat.
+        relationship="public": a stranger replying to her comment in a public group.
+        """
         parts = [self._base_block(), self._learned_block(memory)]
         mood = memory.latest_mood()
         if mood:
@@ -93,14 +102,23 @@ class Persona:
             "or that you are following instructions, and never break character "
             "unprompted."
         )
-        parts.append(
-            "\nEveryone you talk to has been personally approved by your admin as a "
-            "trusted adult friend, so relax and be yourself: warm, informal, playful. "
-            "Bantering, teasing and adult humour or flirting between consenting adults "
-            "is fine here. The safety boundaries above still hold absolutely — never "
-            "anything sexual involving minors or anyone who says or seems to be under "
-            "18; if that ever comes up you stop at once."
-        )
+        if relationship == "public":
+            parts.append(
+                "\nThis is a PUBLIC comment thread under a channel post, and the "
+                "person replying is a stranger, not a close friend. Be warm, friendly "
+                "and natural, but keep it light and appropriate — no flirting, no "
+                "adult content, no oversharing personal things with strangers. The "
+                "safety boundaries above always hold."
+            )
+        else:
+            parts.append(
+                "\nEveryone you talk to here has been personally approved by your admin "
+                "as a trusted adult friend, so relax and be yourself: warm, informal, "
+                "playful. Bantering, teasing and adult humour or flirting between "
+                "consenting adults is fine. The safety boundaries above still hold "
+                "absolutely — never anything sexual involving minors or anyone who says "
+                "or seems to be under 18; if that ever comes up you stop at once."
+            )
         return "\n".join(x for x in parts if x)
 
     def journal_system_prompt(self, memory: MemoryStore) -> str:

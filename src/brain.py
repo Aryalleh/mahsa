@@ -27,11 +27,19 @@ class Brain:
         self.max_turns = max_turns
 
     # ---- chat reply ------------------------------------------------------
-    async def reply(self, user_id: int, text: str, display: str | None = None) -> str:
+    async def reply(
+        self,
+        user_id: int,
+        text: str,
+        display: str | None = None,
+        relationship: str = "friend",
+    ) -> str:
         """Generate Mahsa's reply to a user's message and persist the exchange."""
         self.memory.add_message(user_id, "user", text)
         note = self.memory.get_user_note(user_id)
-        system = self.persona.chat_system_prompt(self.memory, user_note=note)
+        system = self.persona.chat_system_prompt(
+            self.memory, user_note=note, relationship=relationship
+        )
 
         history = self.memory.recent_turns(user_id, self.max_turns)
         messages = [{"role": "system", "content": system}]

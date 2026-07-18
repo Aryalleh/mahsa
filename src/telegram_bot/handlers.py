@@ -52,6 +52,13 @@ def register_handlers(
     def is_admin(uid: int) -> bool:
         return uid in admin_ids
 
+    _me_cache: dict[str, int] = {}
+
+    async def my_id() -> int:
+        if "id" not in _me_cache:
+            _me_cache["id"] = (await client.get_me()).id
+        return _me_cache["id"]
+
     @client.on(events.NewMessage(incoming=True))
     async def on_message(event: events.NewMessage.Event):
         # Only private chats, and never messages we sent ourselves.
@@ -168,6 +175,38 @@ def register_handlers(
                     log.info("Vibe-commented on %s.", uname or event.chat_id)
                 except Exception:  # noqa: BLE001
                     log.debug("Comments not open on %s; skipped comment.", uname or event.chat_id)
+
+        @client.on(events.NewMessage(func=lambda e: e.is_group))
+        async def on_group_reply(event: events.NewMessage.Event):
+            # Only answer when someone replies to one of MAHSA's own comments.
+            if event.out or not event.is_reply:
+                return
+            sender = await event.get_sender()
+            if getattr(sender, "bot", False):
+                return
+            replied = await event.get_reply_message()
+            if not replied or replied.sender_id != await my_id():
+                return
+            text = (event.raw_text or "").strip()
+            if not text:
+                return
+
+            display = getattr(sender, "first_name", None)
+            log.info("Reply to Mahsa's comment from %s (%s): %s",
+                     display, event.sender_id, text[:80])
+            await asyncio.sleep(random.uniform(2, 15))  # human-like pause
+            try:
+                async with client.action(event.chat_id, "typing"):
+                    # Stranger in public → the lighter, non-intimate persona.
+                    reply = await brain.reply(
+                        event.sender_id, text, display=display, relationship="public"
+                    )
+            except FileNotFoundError:
+                return
+            except Exception:  # noqa: BLE001
+                log.exception("Failed to reply in discussion group")
+                return
+            await event.reply(reply)
 
         log.info("Channel-watching on (react=%s, comment=%s, chance=%.2f).",
                  watch.react, watch.comment, watch.chance)
