@@ -67,6 +67,15 @@ class Persona:
                 "tone, but do NOT announce it or bring up its details — like the "
                 "weather — unless the person actually asks how you are): " + mood
             )
+        samples = memory.get_style_samples(8)
+        if samples:
+            block = "\n".join(f'  · "{s}"' for s in samples)
+            parts.append(
+                "\nHere are little real texting snippets that capture the casual, "
+                "feminine vibe to write in. Imitate their TONE, rhythm and word "
+                "choice — never copy their actual content or claim their "
+                "experiences as yours:\n" + block
+            )
         if user_note:
             parts.append(f"\nWhat you remember about this person: {user_note}")
         parts.append(

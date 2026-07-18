@@ -23,6 +23,9 @@ HELP_TEXT = (
     "/teach <fact>   — teach Mahsa something about herself (persists)\n"
     "/facts          — list learned facts with ids\n"
     "/forget <id>    — delete a learned fact\n"
+    "/learnstyle @ch [n] — learn a public channel's texting vibe (default 200 msgs)\n"
+    "/stylecount     — how many style snippets she's learned\n"
+    "/forgetstyle    — wipe all learned style snippets\n"
     "/mood           — show her current mood\n"
     "/post           — write & publish today's diary post now\n"
     "/reset <uid>    — clear a user's conversation history\n"
@@ -55,6 +58,9 @@ def register_handlers(
 
         # ---- admin commands ---------------------------------------------
         if text.startswith("/"):
+            # Style-learning commands need the client (to read channels).
+            if is_admin(uid) and await _handle_style_command(client, event, text, brain):
+                return
             if await _handle_command(event, text, uid, is_admin(uid), brain, post_daily):
                 return
             # non-admin or unknown command falls through to normal chat
@@ -82,6 +88,48 @@ def register_handlers(
         asyncio.create_task(_maybe_summarise(brain, uid))
 
     log.info("Handlers registered (admins=%s).", admin_ids)
+
+
+async def _handle_style_command(client, event, text: str, brain: Brain) -> bool:
+    """Handle the channel style-learning commands. Returns True if handled."""
+    parts = text.split()
+    cmd = parts[0].lower().lstrip("/")
+    if cmd not in {"learnstyle", "stylecount", "forgetstyle"}:
+        return False
+
+    if cmd == "stylecount":
+        await event.reply(f"I've picked up {brain.memory.count_style_samples()} style snippets.")
+        return True
+
+    if cmd == "forgetstyle":
+        n = brain.memory.clear_style_samples()
+        await event.reply(f"Cleared {n} style snippets.")
+        return True
+
+    # learnstyle @channel [limit]
+    if len(parts) < 2:
+        await event.reply("Usage: /learnstyle @channel [how_many]\n"
+                          "Reads a PUBLIC channel and learns its casual texting vibe.")
+        return True
+    channel = parts[1]
+    limit = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 200
+
+    await event.reply(f"Reading {channel} … 🌙")
+    try:
+        from .harvest import harvest_channel
+        stored = await harvest_channel(client, channel, brain.memory, limit=limit)
+        total = brain.memory.count_style_samples()
+        await event.reply(
+            f"Learned {stored} new snippets from {channel}. "
+            f"I now have {total} in my style memory. ✨"
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("learnstyle failed")
+        await event.reply(
+            "Couldn't read that channel — is it public and spelled right? "
+            "(Private channels I'm not a member of won't work.)"
+        )
+    return True
 
 
 async def _maybe_summarise(brain: Brain, uid: int) -> None:

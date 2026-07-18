@@ -48,6 +48,13 @@ CREATE TABLE IF NOT EXISTS user_notes (
     note      TEXT,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS style_samples (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    source    TEXT,                        -- which channel it came from
+    content   TEXT    NOT NULL UNIQUE,
+    created_at TEXT   NOT NULL
+);
 """
 
 
@@ -163,6 +170,43 @@ class MemoryStore:
                 "SELECT 1 FROM journal WHERE day=? LIMIT 1", (date.today().isoformat(),)
             ).fetchone()
         return row is not None
+
+    # ---- style samples (learned texting vibe from public channels) ------
+    def add_style_sample(self, content: str, source: str | None = None) -> bool:
+        content = content.strip()
+        if not content:
+            return False
+        with self._lock:
+            try:
+                self._conn.execute(
+                    "INSERT INTO style_samples(source, content, created_at) VALUES (?,?,?)",
+                    (source, content, datetime.utcnow().isoformat()),
+                )
+                self._conn.commit()
+                return True
+            except sqlite3.IntegrityError:
+                return False  # duplicate
+
+    def get_style_samples(self, limit: int) -> list[str]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT content FROM style_samples ORDER BY RANDOM() LIMIT ?", (limit,)
+            ).fetchall()
+        return [r["content"] for r in rows]
+
+    def count_style_samples(self) -> int:
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) AS n FROM style_samples").fetchone()
+        return row["n"]
+
+    def clear_style_samples(self, source: str | None = None) -> int:
+        with self._lock:
+            if source:
+                cur = self._conn.execute("DELETE FROM style_samples WHERE source=?", (source,))
+            else:
+                cur = self._conn.execute("DELETE FROM style_samples")
+            self._conn.commit()
+            return cur.rowcount
 
     # ---- per-user notes --------------------------------------------------
     def set_user_note(self, user_id: int, note: str, display: str | None = None) -> None:
