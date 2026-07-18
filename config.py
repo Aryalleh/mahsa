@@ -68,6 +68,16 @@ class ScheduleConfig:
 
 
 @dataclass
+class WatchConfig:
+    enabled: bool          # follow joined channels at all
+    react: bool            # add an emoji reaction to new posts
+    comment: bool          # comment her "vibe" when the post has comments open
+    chance: float          # probability of acting on any given post (0..1)
+    min_len: int           # skip posts shorter than this many chars
+    max_delay: int         # random 0..max_delay second wait before acting (human-like)
+
+
+@dataclass
 class Config:
     telegram: TelegramConfig
     llm: LLMConfig
@@ -75,6 +85,7 @@ class Config:
     persona_file: str
     database_path: str
     memory_max_turns: int
+    schedule_watch: "WatchConfig | None" = None
     whitelist_enabled: bool = True
     admin_user_ids: list[int] = field(default_factory=list)
 
@@ -105,6 +116,14 @@ def load_config() -> Config:
         persona_file=_get("PERSONA_FILE", "src/persona/mahsa.yaml"),
         database_path=_get("DATABASE_PATH", "data/mahsa.db"),
         memory_max_turns=_get_int("MEMORY_MAX_TURNS", 20),
+        schedule_watch=WatchConfig(
+            enabled=_get_bool("CHANNEL_WATCH_ENABLED", False),
+            react=_get_bool("CHANNEL_REACT", True),
+            comment=_get_bool("CHANNEL_COMMENT", True),
+            chance=_get_float("CHANNEL_ACTION_CHANCE", 0.6),
+            min_len=_get_int("CHANNEL_MIN_LEN", 15),
+            max_delay=_get_int("CHANNEL_MAX_DELAY", 45),
+        ),
         whitelist_enabled=_get_bool("WHITELIST_ENABLED", True),
         admin_user_ids=admins,
     )

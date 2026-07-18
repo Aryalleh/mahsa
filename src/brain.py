@@ -67,6 +67,52 @@ class Brain:
         journal_id = self.memory.add_journal(entry=entry, mood=mood)
         return journal_id, entry
 
+    # ---- reacting to channel posts --------------------------------------
+    # A small, common reaction set most channels allow.
+    _REACTIONS = ["❤️", "🔥", "😍", "👍", "😂", "😮", "😢", "🤔", "🙏", "👏"]
+
+    async def channel_vibe(self, post_text: str) -> tuple[str, str]:
+        """Read a channel post and return (comment_text, reaction_emoji) in her voice."""
+        system = self.persona.chat_system_prompt(self.memory)
+        allowed = " ".join(self._REACTIONS)
+        prompt = (
+            "You just saw this post in a channel you follow:\n\n"
+            f"\"{post_text[:800]}\"\n\n"
+            "React the way you naturally would. Reply in EXACTLY this format:\n"
+            f"first line: one emoji from this set only -> {allowed}\n"
+            "second line: one short, casual sentence in your own voice saying the "
+            "vibe you got from it. Nothing else, no quotes."
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+        text = await asyncio.to_thread(self.engine.chat, messages, 0.8, 120)
+        return self._parse_vibe(text)
+
+    def _parse_vibe(self, text: str) -> tuple[str, str]:
+        reaction = "❤️"
+        for ch in text:
+            if ch in self._REACTIONS:
+                reaction = ch
+                break
+        # also match multi-codepoint emoji like ❤️ that the loop above may miss
+        for emo in self._REACTIONS:
+            if emo in text:
+                reaction = emo
+                break
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        comment = ""
+        for l in lines:
+            stripped = l
+            for emo in self._REACTIONS:
+                stripped = stripped.replace(emo, "")
+            stripped = stripped.strip(" -–—:•\"'")
+            if len(stripped) >= 3:
+                comment = stripped
+                break
+        return comment, reaction
+
     # ---- service-bot menu navigation ------------------------------------
     async def choose_button(self, bot_text: str, labels: list[str]) -> int | None:
         """Pick which inline ("glass") button to press on a menu bot, or None.

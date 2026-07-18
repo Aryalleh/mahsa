@@ -10,6 +10,7 @@ Because Mahsa runs on a *real user account*, we are deliberately conservative:
 from __future__ import annotations
 
 import asyncio
+import random
 
 from telethon import TelegramClient, events
 
@@ -44,6 +45,8 @@ def register_handlers(
     channel: str,
     post_daily,  # coroutine fn: async def(force: bool) -> str | None
     whitelist_enabled: bool = True,
+    watch=None,             # config.WatchConfig | None
+    own_channel: str = "",  # Mahsa's own channel, skipped when following others
 ) -> None:
 
     def is_admin(uid: int) -> bool:
@@ -123,6 +126,51 @@ def register_handlers(
 
         # Occasionally refresh the remembered note about this person.
         asyncio.create_task(_maybe_summarise(brain, uid))
+
+    # ---- follow joined channels: vibe-comment + react -------------------
+    if watch and getattr(watch, "enabled", False):
+
+        @client.on(events.NewMessage(func=lambda e: e.is_channel and not e.is_group))
+        async def on_channel_post(event: events.NewMessage.Event):
+            if event.out:
+                return  # her own post
+            uname = getattr(event.chat, "username", None)
+            if uname and own_channel and ("@" + uname).lower() == own_channel.lower():
+                return  # skip her own channel
+            text = (event.raw_text or "").strip()
+            if len(text) < watch.min_len:
+                return
+            if random.random() > watch.chance:
+                return  # act on only a fraction of posts, to look human
+
+            # Wait a random moment so it isn't an instant, robotic reaction.
+            await asyncio.sleep(random.uniform(2, max(2, watch.max_delay)))
+
+            try:
+                comment, reaction = await brain.channel_vibe(text)
+            except FileNotFoundError:
+                return  # model not loaded
+            except Exception:  # noqa: BLE001
+                log.exception("Failed to read channel vibe")
+                return
+
+            if watch.react and reaction:
+                try:
+                    await client.send_reaction(event.chat_id, event.message.id, reaction)
+                except Exception:  # noqa: BLE001
+                    log.debug("Could not react (channel may block reactions).")
+
+            if watch.comment and comment:
+                try:
+                    await client.send_message(
+                        event.chat_id, comment, comment_to=event.message.id
+                    )
+                    log.info("Vibe-commented on %s.", uname or event.chat_id)
+                except Exception:  # noqa: BLE001
+                    log.debug("Comments not open on %s; skipped comment.", uname or event.chat_id)
+
+        log.info("Channel-watching on (react=%s, comment=%s, chance=%.2f).",
+                 watch.react, watch.comment, watch.chance)
 
     log.info("Handlers registered (admins=%s).", admin_ids)
 
