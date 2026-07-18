@@ -175,29 +175,28 @@ def register_handlers(
             if uname and own_channel and ("@" + uname).lower() == own_channel.lower():
                 return  # skip her own channel
             text = (event.raw_text or "").strip()
-            if len(text) < watch.min_len:
-                return
-            if random.random() > watch.chance:
-                return  # act on only a fraction of posts, to look human
 
             # Wait a random moment so it isn't an instant, robotic reaction.
             await asyncio.sleep(random.uniform(2, max(2, watch.max_delay)))
 
-            try:
-                comment, reaction = await brain.channel_vibe(text)
-            except FileNotFoundError:
-                return  # model not loaded
-            except Exception:  # noqa: BLE001
-                log.exception("Failed to read channel vibe")
-                return
-
-            if watch.react and reaction:
+            # Pick a mood-matched reaction (and a possible comment). For posts
+            # with little/no text we can't judge a mood, so use a neutral default.
+            comment, reaction = "", "❤️"
+            if len(text) >= 10:
                 try:
-                    await client.send_reaction(event.chat_id, event.message.id, reaction)
+                    comment, reaction = await brain.channel_vibe(text)
+                except FileNotFoundError:
+                    return  # model not loaded
                 except Exception:  # noqa: BLE001
-                    log.debug("Could not react (channel may block reactions).")
+                    log.exception("Failed to read channel vibe")
 
-            if watch.comment and comment:
+            # React to EVERY post, and make sure it actually lands: if the
+            # chosen emoji isn't allowed by the channel, fall back to common ones.
+            if watch.react:
+                await _react_with_fallback(client, event.chat_id, event.message.id, reaction)
+
+            # Commenting is spammier/riskier, so keep it probabilistic.
+            if watch.comment and comment and random.random() <= watch.chance:
                 try:
                     await client.send_message(
                         event.chat_id, comment, comment_to=event.message.id
@@ -335,6 +334,27 @@ async def _handle_bot_buttons(event, brain: Brain) -> bool:
     except Exception:  # noqa: BLE001
         log.exception("Failed to press button '%s'", label)
     return True
+
+
+async def _react_with_fallback(client, entity, msg_id, reaction: str) -> bool:
+    """React with `reaction`; if the channel doesn't allow it, try common ones.
+
+    Returns True if any reaction landed. Ensures a post gets a reaction even
+    when the model's mood-picked emoji isn't in that channel's allowed set.
+    """
+    tried = []
+    for emo in [reaction, "❤️", "👍", "🔥", "🙏"]:
+        if not emo or emo in tried:
+            continue
+        tried.append(emo)
+        try:
+            await client.send_reaction(entity, msg_id, emo)
+            log.info("Reacted %s to a post in %s.", emo, entity)
+            return True
+        except Exception:  # noqa: BLE001
+            continue
+    log.debug("Could not react to %s (channel may disable reactions).", entity)
+    return False
 
 
 async def _notify_admins_new_contact(client, admin_ids, uid, display, first_msg) -> None:
