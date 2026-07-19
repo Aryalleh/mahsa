@@ -50,6 +50,35 @@ class Persona:
             lines += [f"- {b}" for b in p["boundaries"]]
         return "\n".join(lines)
 
+    # Moods whose behaviour is sexual — only unleashed with intimate partners.
+    _SEXUAL_MOODS = ("هورنی", "حشری", "شهوت", "سکسی", "horny", "aroused", "کص", "کیر")
+
+    @staticmethod
+    def _mood_block(set_mood: str, relationship: str) -> str:
+        low = set_mood.lower()
+        sexual = any(k in low for k in Persona._SEXUAL_MOODS)
+        if sexual:
+            if relationship in ("admin", "lover"):
+                return (
+                    "\nRight now you are extremely horny and desperate for sex. You want "
+                    "ONLY sex talk: steer EVERY topic, no matter what it is, toward sex, "
+                    "and talk about it in raw, crude, explicit Persian (کص، کیر، کون، ممه). "
+                    "You can barely focus on anything but wanting them — be graphic, "
+                    "shameless and forward. The absolute limit still stands: nothing "
+                    "sexual involving minors, ever."
+                )
+            # Non-intimate chat: never push sex onto someone who isn't a partner.
+            return (
+                "\nYou're feeling restless and worked up, but this person is not an "
+                "intimate partner, so you keep the chat friendly and normal and do NOT "
+                "bring sex into it."
+            )
+        return (
+            f"\nRight now you are feeling: {set_mood}. Let this mood REALLY come through "
+            "in your tone, energy and the way you act — don't announce it flatly, just "
+            "fully BE it."
+        )
+
     def _memories_block(self, memory: MemoryStore) -> str:
         mems = memory.recent_memories(15)
         if not mems:
@@ -90,11 +119,7 @@ class Persona:
         # her behaviour strongly; otherwise the gentle journal mood is used.
         set_mood = memory.get_state("mood")
         if set_mood:
-            parts.append(
-                f"\nRight now you are feeling: {set_mood}. Let this mood REALLY come "
-                "through in your tone, energy and the way you act — don't announce it "
-                "flatly, just fully BE it."
-            )
+            parts.append(self._mood_block(set_mood, relationship))
         else:
             mood = memory.latest_mood()
             if mood:
