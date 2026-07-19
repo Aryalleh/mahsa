@@ -33,7 +33,7 @@ HELP_TEXT = (
     "/friends        — list approved friends\n"
     "/name <uid> <name> — give a friend a name Mahsa uses\n"
     "/tell <name|@user|id> <msg> — have Mahsa pass a message to a friend\n"
-    "/lover <uid>    — mark a consenting adult for intimate mode (no admin powers)\n"
+    "/lover <uid|group_id> — intimate mode for a consenting adult, or a private group\n"
     "/unlover <uid>  — remove lover status\n"
     "/lovers         — list lovers\n"
     "/mood           — show her current mood\n"
@@ -225,19 +225,26 @@ def register_handlers(
             if not text:
                 return
 
-            # Should she chime in? Only when clearly addressed.
+            # A group marked as a lover-group is a private intimate space: she
+            # replies to everything there. Elsewhere, only when clearly addressed.
+            lover_group = brain.memory.is_lover(event.chat_id)
             is_reply_to_me = False
             if event.is_reply:
                 replied = await event.get_reply_message()
                 is_reply_to_me = bool(replied and replied.sender_id == await my_id())
             mentioned = bool(getattr(event.message, "mentioned", False))
             named = persona_name.lower() in text.lower() or persona_name_fa in text
-            if not (is_reply_to_me or mentioned or named):
+            if not (lover_group or is_reply_to_me or mentioned or named):
                 return
 
-            # Approved friends get her warm tone; anyone else gets the public tone.
             status = brain.memory.get_contact_status(event.sender_id)
-            relationship = "friend" if (is_admin(event.sender_id) or status == "approved") else "public"
+            trusted = (is_admin(event.sender_id)
+                       or brain.memory.is_lover(event.sender_id)
+                       or status == "approved")
+            if lover_group:
+                relationship = "lover" if trusted else "public"
+            else:
+                relationship = "friend" if trusted else "public"
 
             display = getattr(sender, "first_name", None)
             log.info("Group message addressing Mahsa from %s (%s): %s",
@@ -413,13 +420,20 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
             return True
         target = int(parts[1])
         if cmd == "lover":
-            # Approve + mark as lover so they get intimate mode (no admin powers).
-            brain.memory.upsert_contact(target, None, "approved")
             brain.memory.add_lover(target)
-            await event.reply(
-                f"❤️ {target} به‌عنوان lover ثبت شد. مهسا باهاش صمیمیه — ولی دستور "
-                "ادمین یا خوندن چت بقیه رو نداره."
-            )
+            if target > 0:
+                # A real user → also approve them so Mahsa chats with them.
+                brain.memory.upsert_contact(target, None, "approved")
+                await event.reply(
+                    f"❤️ {target} به‌عنوان lover ثبت شد. مهسا باهاش صمیمیه — ولی دستور "
+                    "ادمین یا خوندن چت بقیه رو نداره."
+                )
+            else:
+                # Negative id → a group/channel becomes an intimate space.
+                await event.reply(
+                    f"❤️ گروهِ {target} به‌عنوان فضای صمیمی ثبت شد. مهسا اونجا حالتِ "
+                    "lover داره و به همه‌ی پیام‌ها جواب می‌ده."
+                )
         else:
             ok = brain.memory.remove_lover(target)
             await event.reply("برداشته شد." if ok else "این آیدی lover نبود.")
