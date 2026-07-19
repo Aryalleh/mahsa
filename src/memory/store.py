@@ -94,6 +94,12 @@ CREATE TABLE IF NOT EXISTS state (
     key   TEXT PRIMARY KEY,          -- small key/value state (e.g. current mood)
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS memories (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    content   TEXT NOT NULL,         -- one shared, cross-chat episodic memory
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -430,6 +436,30 @@ class MemoryStore:
             ).fetchall()
         return [(r["user_a"], self.contact_display(r["user_a"]),
                  r["user_b"], self.contact_display(r["user_b"])) for r in rows]
+
+    # ---- shared cross-chat memories -------------------------------------
+    def add_memory(self, content: str) -> None:
+        content = content.strip()
+        if not content:
+            return
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO memories(content, created_at) VALUES (?,?)",
+                (content, datetime.utcnow().isoformat()),
+            )
+            # Keep only the most recent 120 so it can't grow forever.
+            self._conn.execute(
+                "DELETE FROM memories WHERE id NOT IN "
+                "(SELECT id FROM memories ORDER BY id DESC LIMIT 120)"
+            )
+            self._conn.commit()
+
+    def recent_memories(self, limit: int = 15) -> list[str]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT content FROM memories ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [r["content"] for r in reversed(rows)]
 
     # ---- key/value state (current mood, …) ------------------------------
     def set_state(self, key: str, value: str) -> None:

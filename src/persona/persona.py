@@ -50,6 +50,15 @@ class Persona:
             lines += [f"- {b}" for b in p["boundaries"]]
         return "\n".join(lines)
 
+    def _memories_block(self, memory: MemoryStore) -> str:
+        mems = memory.recent_memories(15)
+        if not mems:
+            return ""
+        body = "\n".join(f"- {m}" for m in mems)
+        return ("\nRecent things that have happened in your life and across your "
+                "chats — this is ONE shared memory, like a real person's. Stay "
+                "consistent with it in every conversation:\n" + body)
+
     def _learned_block(self, memory: MemoryStore) -> str:
         facts = memory.get_facts()
         if not facts:
@@ -74,7 +83,8 @@ class Persona:
         relationship="public": a stranger replying to her comment in a public group.
         known_people: (name, short note) of her other friends, so she can mention them.
         """
-        parts = [self._base_block(), self._learned_block(memory)]
+        parts = [self._base_block(), self._learned_block(memory),
+                 self._memories_block(memory)]
         # An explicitly-set mood (via /mood) overrides the journal mood and drives
         # her behaviour strongly; otherwise the gentle journal mood is used.
         set_mood = memory.get_state("mood")

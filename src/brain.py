@@ -376,21 +376,25 @@ class Brain:
         return "", text.strip()
 
     async def summarise_user(self, user_id: int) -> None:
-        """Update the short remembered note about a user from recent history."""
+        """Update the per-user note AND add one shared cross-chat memory."""
         history = self.memory.recent_turns(user_id, self.max_turns)
         if len(history) < 4:
             return
+        name = self.memory.contact_display(user_id)
         transcript = "\n".join(f"{t.role}: {t.content}" for t in history)
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You maintain a private one-paragraph memory note about a person "
-                    f"{self.persona.name} chats with. Summarise who they seem to be, "
-                    "what they talked about, and their tone. Third person, concise."
+                    f"You keep {self.persona.name}'s memory. In ONE short third-person "
+                    f"Persian sentence, note what {name} and {self.persona.name} just "
+                    "talked about and anything notable that happened between them. "
+                    "Concise, like a diary line."
                 ),
             },
-            {"role": "user", "content": f"Conversation:\n{transcript}\n\nWrite the note:"},
+            {"role": "user", "content": f"Conversation:\n{transcript}\n\nThe memory line:"},
         ]
-        note = await asyncio.to_thread(self.engine.chat, messages, 0.4, 200)
-        self.memory.set_user_note(user_id, note)
+        recap = (await asyncio.to_thread(self.engine.chat, messages, 0.4, 120)).strip()
+        if recap:
+            self.memory.set_user_note(user_id, recap)
+            self.memory.add_memory(recap)   # one shared memory across all chats

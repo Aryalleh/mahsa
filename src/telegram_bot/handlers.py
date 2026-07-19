@@ -22,6 +22,7 @@ log = get_logger("mahsa.telegram")
 HELP_TEXT = (
     "Admin commands:\n"
     "/teach <fact>   — teach Mahsa something about herself (persists)\n"
+    "/remember <event> — add a shared memory she recalls in every chat\n"
     "/facts          — list learned facts with ids\n"
     "/forget <id>    — delete a learned fact\n"
     "/learnstyle @ch [n] — learn a public channel's texting vibe (default 200 msgs)\n"
@@ -676,7 +677,8 @@ async def _handle_command(
     cmd = parts[0].lower().lstrip("/")
     arg = parts[1].strip() if len(parts) > 1 else ""
 
-    if cmd not in {"teach", "facts", "forget", "mood", "post", "reset", "help", "start"}:
+    if cmd not in {"teach", "facts", "forget", "mood", "post", "reset", "help",
+                   "start", "remember"}:
         return False
 
     if not admin:
@@ -703,6 +705,12 @@ async def _handle_command(
         else:
             ok = brain.memory.delete_fact(int(arg))
             await event.reply("Forgotten." if ok else "No fact with that id.")
+    elif cmd == "remember":
+        if arg:
+            brain.memory.add_memory(arg)
+            await event.reply("یادم موند 🧠 (توی همه‌ی چت‌ها یادش می‌مونه)")
+        else:
+            await event.reply("Usage: /remember <یه اتفاق/خاطره>")
     elif cmd == "mood":
         if arg:
             if arg.strip() in ("auto", "clear", "پاک", "reset"):
