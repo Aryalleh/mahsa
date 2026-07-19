@@ -74,6 +74,13 @@ CREATE TABLE IF NOT EXISTS spouses (
     name      TEXT,
     married_at TEXT   NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS ships (
+    user_a    INTEGER NOT NULL,      -- two *other* users married to each other
+    user_b    INTEGER NOT NULL,      -- stored with user_a < user_b
+    created_at TEXT   NOT NULL,
+    PRIMARY KEY (user_a, user_b)
+);
 """
 
 
@@ -359,6 +366,57 @@ class MemoryStore:
                    ORDER BY s.married_at"""
             ).fetchall()
         return [(r[0], r[1]) for r in rows]
+
+    # ---- ships (marrying two other users to each other) -----------------
+    def contact_display(self, user_id: int) -> str:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT display FROM contacts WHERE user_id=?", (user_id,)
+            ).fetchone()
+        return (row["display"] if row and row["display"] else str(user_id))
+
+    def add_ship(self, a: int, b: int) -> bool:
+        lo, hi = (a, b) if a < b else (b, a)
+        with self._lock:
+            try:
+                self._conn.execute(
+                    "INSERT INTO ships(user_a, user_b, created_at) VALUES (?,?,?)",
+                    (lo, hi, datetime.utcnow().isoformat()),
+                )
+                self._conn.commit()
+                return True
+            except sqlite3.IntegrityError:
+                return False  # already shipped
+
+    def remove_ship(self, a: int, b: int) -> bool:
+        lo, hi = (a, b) if a < b else (b, a)
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM ships WHERE user_a=? AND user_b=?", (lo, hi)
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def partners_of(self, user_id: int) -> list[tuple[int, str]]:
+        """Who this user is married to (their shipped partners), as (id, name)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT user_a, user_b FROM ships WHERE user_a=? OR user_b=?",
+                (user_id, user_id),
+            ).fetchall()
+        out = []
+        for r in rows:
+            other = r["user_b"] if r["user_a"] == user_id else r["user_a"]
+            out.append((other, self.contact_display(other)))
+        return out
+
+    def list_ships(self) -> list[tuple[int, str, int, str]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT user_a, user_b FROM ships ORDER BY created_at"
+            ).fetchall()
+        return [(r["user_a"], self.contact_display(r["user_a"]),
+                 r["user_b"], self.contact_display(r["user_b"])) for r in rows]
 
     # ---- per-user notes --------------------------------------------------
     def set_user_note(self, user_id: int, note: str, display: str | None = None) -> None:

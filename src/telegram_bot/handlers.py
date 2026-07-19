@@ -39,6 +39,9 @@ HELP_TEXT = (
     "/marry <uid> [name] — marry someone (polygamy is fine)\n"
     "/divorce <uid>  — divorce someone\n"
     "/spouses        — list Mahsa's spouses\n"
+    "/ship <id1> <id2> — marry two other users to each other\n"
+    "/unship <id1> <id2> — separate a shipped couple\n"
+    "/ships          — list shipped couples\n"
     "/mood           — show her current mood\n"
     "/post           — write & publish today's diary post now\n"
     "/reset <uid>    — clear a user's conversation history\n"
@@ -405,8 +408,39 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
     parts = text.split()
     cmd = parts[0].lower().lstrip("/")
     if cmd not in {"approve", "block", "pending", "friends", "name", "tell",
-                   "lover", "unlover", "lovers", "marry", "divorce", "spouses"}:
+                   "lover", "unlover", "lovers", "marry", "divorce", "spouses",
+                   "ship", "unship", "ships"}:
         return False
+
+    if cmd == "ships":
+        rows = brain.memory.list_ships()
+        if not rows:
+            await event.reply("هنوز کسی رو شیپ نکردم.")
+        else:
+            await event.reply("زوج‌هایی که به هم رسوندم:\n" +
+                              "\n".join(f"• {na} 💍 {nb}" for _, na, _, nb in rows))
+        return True
+
+    if cmd in ("ship", "unship"):
+        bits = text.split()
+        if len(bits) < 3 or not bits[1].lstrip("-").isdigit() or not bits[2].lstrip("-").isdigit():
+            await event.reply(f"Usage: /{cmd} <user id 1> <user id 2>")
+            return True
+        a, b = int(bits[1]), int(bits[2])
+        if a == b:
+            await event.reply("دو تا آیدیِ متفاوت بده.")
+            return True
+        if cmd == "ship":
+            ok = brain.memory.add_ship(a, b)
+            na, nb = brain.memory.contact_display(a), brain.memory.contact_display(b)
+            await event.reply(
+                f"💍 {na} و {nb} رو به هم رسوندم! حالا زن و شوهرن." if ok
+                else "این دو تا از قبل شیپ شده بودن."
+            )
+        else:
+            ok = brain.memory.remove_ship(a, b)
+            await event.reply("جداشون کردم." if ok else "این دو تا شیپ نشده بودن.")
+        return True
 
     if cmd == "spouses":
         rows = brain.memory.list_spouses()

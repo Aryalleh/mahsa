@@ -103,6 +103,15 @@ class Persona:
                 block += (" The person you are talking to right now is one of your "
                           "spouses — treat them as your beloved partner.")
             parts.append(block)
+        if current_user_id is not None:
+            partners = memory.partners_of(current_user_id)
+            if partners:
+                pnames = "، ".join(n for _, n in partners)
+                parts.append(
+                    f"\nYou personally married this person to {pnames}. They are a "
+                    "married couple thanks to you. If they ask whether they're married, "
+                    "cheerfully confirm it — yes, you married them together."
+                )
         if user_note:
             parts.append(f"\nWhat you remember about this person: {user_note}")
         if known_people:
