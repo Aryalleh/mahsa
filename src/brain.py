@@ -39,9 +39,13 @@ class Brain:
         self.memory.add_message(user_id, "user", text)
         note = self.memory.get_user_note(user_id)
         known = self._friends_roster(exclude=user_id)
+        # Prefer the name we've stored for them (via /name); fall back to Telegram.
+        name = self.memory.contact_display(user_id)
+        if name == str(user_id):
+            name = display or None
         system = self.persona.chat_system_prompt(
             self.memory, user_note=note, relationship=relationship,
-            known_people=known, current_user_id=user_id,
+            known_people=known, current_user_id=user_id, current_name=name,
         )
 
         history = self.memory.recent_turns(user_id, self.max_turns)

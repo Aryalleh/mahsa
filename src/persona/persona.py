@@ -76,6 +76,7 @@ class Persona:
         relationship: str = "friend",
         known_people: list[tuple[str, str]] | None = None,
         current_user_id: int | None = None,
+        current_name: str | None = None,
     ) -> str:
         """System prompt for replying to a person.
 
@@ -132,8 +133,14 @@ class Persona:
                     "married couple thanks to you. If they ask whether they're married, "
                     "cheerfully confirm it — yes, you married them together."
                 )
+        if current_name:
+            parts.append(
+                f"\nYou are talking to {current_name} right now — this exact person. "
+                f"Address them as {current_name}. Do NOT mix them up with any of your "
+                "other friends or call them by someone else's name."
+            )
         if user_note:
-            parts.append(f"\nWhat you remember about this person: {user_note}")
+            parts.append(f"\nWhat you remember about {current_name or 'this person'}: {user_note}")
         if known_people:
             roster = "\n".join(
                 f"- {name}" + (f": {note}" if note else "")
