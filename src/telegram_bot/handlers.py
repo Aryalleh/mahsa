@@ -199,7 +199,7 @@ def register_handlers(
             await event.reply(result["text"])
 
         # Occasionally refresh the remembered note about this person.
-        asyncio.create_task(_maybe_summarise(brain, uid))
+        asyncio.create_task(_maybe_summarise(brain, uid, learn_facts=rel in ("admin", "lover")))
 
     # ---- follow joined channels: vibe-comment + react -------------------
     if watch and getattr(watch, "enabled", False):
@@ -658,13 +658,13 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
     return True
 
 
-async def _maybe_summarise(brain: Brain, uid: int) -> None:
+async def _maybe_summarise(brain: Brain, uid: int, learn_facts: bool = False) -> None:
     try:
-        # Refresh the per-user note only occasionally: it's a whole extra model
-        # generation that competes for the engine, so keep it rare to stay fast.
+        # Refresh memory only occasionally: it's a whole extra model generation
+        # that competes for the engine, so keep it rare to stay fast.
         turns = brain.memory.recent_turns(uid, brain.max_turns)
         if len(turns) >= 6 and len(turns) % 20 == 0:
-            await brain.summarise_user(uid)
+            await brain.summarise_user(uid, learn_facts=learn_facts)
     except Exception:  # noqa: BLE001
         log.exception("Failed to summarise user %s", uid)
 

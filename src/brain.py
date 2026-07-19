@@ -397,26 +397,55 @@ class Brain:
             return mood, body
         return "", text.strip()
 
-    async def summarise_user(self, user_id: int) -> None:
-        """Update the per-user note AND add one shared cross-chat memory."""
+    async def summarise_user(self, user_id: int, learn_facts: bool = False) -> None:
+        """Add a shared memory from the recent chat, and (optionally) learn new
+        personality facts about Mahsa herself that emerged in it.
+        """
         history = self.memory.recent_turns(user_id, self.max_turns)
         if len(history) < 4:
             return
         name = self.memory.contact_display(user_id)
+        me = self.persona.name
         transcript = "\n".join(f"{t.role}: {t.content}" for t in history)
         messages = [
             {
                 "role": "system",
                 "content": (
-                    f"You keep {self.persona.name}'s memory. In ONE short third-person "
-                    f"Persian sentence, note what {name} and {self.persona.name} just "
-                    "talked about and anything notable that happened between them. "
-                    "Concise, like a diary line."
+                    f"You maintain {me}'s memory. From the recent chat between {name} "
+                    f"and {me}, output EXACTLY two lines:\n"
+                    "MEMORY: <one short third-person Persian sentence about what they "
+                    "talked about or what happened>\n"
+                    f"FACTS: <new lasting facts about {me} HERSELF that she revealed or "
+                    f"agreed to — her tastes, feelings, life, opinions; NOT facts about "
+                    f"{name}. Separate several with ' | '. If none, write NONE>"
                 ),
             },
-            {"role": "user", "content": f"Conversation:\n{transcript}\n\nThe memory line:"},
+            {"role": "user", "content": f"Conversation:\n{transcript}"},
         ]
-        recap = (await asyncio.to_thread(self.engine.chat, messages, 0.4, 120)).strip()
+        out = await asyncio.to_thread(self.engine.chat, messages, 0.4, 200)
+        recap, facts = self._parse_summary(out)
         if recap:
             self.memory.set_user_note(user_id, recap)
-            self.memory.add_memory(recap)   # one shared memory across all chats
+            self.memory.add_memory(recap)          # shared across all chats
+        if learn_facts:
+            for f in facts:
+                self.memory.add_fact(f, category="learned", source=str(user_id))
+
+    @staticmethod
+    def _parse_summary(text: str) -> tuple[str, list[str]]:
+        recap, facts = "", []
+        for line in text.splitlines():
+            s = line.strip()
+            low = s.lower()
+            if low.startswith("memory:") or s.startswith("خاطره:"):
+                recap = s.split(":", 1)[1].strip()
+            elif low.startswith("facts:") or s.startswith("فکت") or s.startswith("حقایق:"):
+                body = s.split(":", 1)[1].strip()
+                if body and body.strip().upper() != "NONE" and body not in ("هیچ", "ندارد", "-"):
+                    facts = [x.strip() for x in body.split("|") if len(x.strip()) > 3]
+        if not recap:  # fallback: first non-empty line
+            for line in text.splitlines():
+                if line.strip():
+                    recap = line.strip()
+                    break
+        return recap, facts
