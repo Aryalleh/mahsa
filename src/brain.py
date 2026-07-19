@@ -75,7 +75,8 @@ class Brain:
     # doubled latency on ordinary messages).
     _ACTION_HINTS = ("بهش بگو", "بگو به", "پیام بده", "پیام بفرست", "بفرست به",
                      "برسون", "سلام برسون", "بهش پیام", "صحبت کرد", "حرف زد",
-                     "چیا گفت", "چی گفت", "چت کرد", "tell ", "message to", "what did you")
+                     "چیا گفت", "چی گفت", "چت کرد", "بپرس", "ازش بپرس", "حالشو بپرس",
+                     "چه خبر از", "tell ", "message to", "what did you", "ask ")
 
     # Proposal phrases that mean "marry me" (recorded only in intimate chats).
     _MARRY_HINTS = ("با من ازدواج", "باهام ازدواج", "ازدواج کن", "زنم شو", "زنم بشو",
@@ -104,7 +105,7 @@ class Brain:
 
         if relationship in ("friend", "admin", "lover"):
             action, who, message = await self._detect_action(text)
-            if action in ("relay", "recall") and who:
+            if action in ("relay", "recall", "ask") and who:
                 matches = [m for m in self.memory.find_contacts_by_name(who) if m[0] != user_id]
                 if not matches:
                     self.memory.add_message(user_id, "user", text)
@@ -116,6 +117,12 @@ class Brain:
                     relay = await self.compose_relay(to_name, message)
                     return {"kind": "relay", "to_id": to_id, "to_name": to_name,
                             "text": relay, "user_text": text}
+                if action == "ask":
+                    question = message or "چه خبر؟ خوبی؟"
+                    q_text = await self.compose_relay(to_name, question)
+                    return {"kind": "ask", "to_id": to_id, "to_name": to_name,
+                            "text": q_text, "asker_id": user_id, "question": question,
+                            "user_text": text}
                 if action == "recall" and relationship == "admin":
                     self.memory.add_message(user_id, "user", text)
                     summary = await self.summarise_chat_with(to_id, to_name)
@@ -142,10 +149,13 @@ class Brain:
         system = (
             "You classify what the user wants Mahsa to do about one of her friends. "
             f"Her friends are: {names}. Respond with JSON only: "
-            '{"action": "relay" | "recall" | "none", "who": "<friend name or empty>", '
-            '"message": "<for relay: what to tell them; else empty>"}. '
+            '{"action": "relay" | "recall" | "ask" | "none", "who": "<friend name or '
+            'empty>", "message": "<for relay: what to tell them; for ask: the question '
+            'to ask them; else empty>"}. '
             '"relay" = the user asks Mahsa to tell/send something to a named friend. '
-            '"recall" = the user asks what Mahsa talked about / said with a named friend. '
+            '"ask" = the user asks Mahsa to ASK a named friend something and report their '
+            "answer back (e.g. 'ask Blue how they are'). "
+            '"recall" = the user asks what Mahsa already talked about with a named friend. '
             '"none" = anything else.'
         )
         messages = [
@@ -162,6 +172,8 @@ class Brain:
         message = str(data.get("message", "")).strip()
         if action == "relay" and who and message:
             return ("relay", who, message)
+        if action == "ask" and who:
+            return ("ask", who, message)
         if action == "recall" and who:
             return ("recall", who, "")
         return ("none", "", "")

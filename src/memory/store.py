@@ -81,6 +81,14 @@ CREATE TABLE IF NOT EXISTS ships (
     created_at TEXT   NOT NULL,
     PRIMARY KEY (user_a, user_b)
 );
+
+CREATE TABLE IF NOT EXISTS pending_asks (
+    target_id INTEGER NOT NULL,      -- the friend Mahsa was told to ask
+    asker_id  INTEGER NOT NULL,      -- who wants the answer reported back
+    question  TEXT,
+    created_at TEXT   NOT NULL,
+    PRIMARY KEY (target_id, asker_id)
+);
 """
 
 
@@ -417,6 +425,32 @@ class MemoryStore:
             ).fetchall()
         return [(r["user_a"], self.contact_display(r["user_a"]),
                  r["user_b"], self.contact_display(r["user_b"])) for r in rows]
+
+    # ---- pending cross-chat questions -----------------------------------
+    def add_pending_ask(self, target_id: int, asker_id: int, question: str | None) -> None:
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO pending_asks(target_id, asker_id, question, created_at)
+                   VALUES (?,?,?,?)
+                   ON CONFLICT(target_id, asker_id) DO UPDATE SET
+                       question=excluded.question, created_at=excluded.created_at""",
+                (target_id, asker_id, question, datetime.utcnow().isoformat()),
+            )
+            self._conn.commit()
+
+    def pop_pending_asks(self, target_id: int) -> list[tuple[int, str]]:
+        """Return and clear all pending questions waiting on this target."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT asker_id, question FROM pending_asks WHERE target_id=?",
+                (target_id,),
+            ).fetchall()
+            if rows:
+                self._conn.execute(
+                    "DELETE FROM pending_asks WHERE target_id=?", (target_id,)
+                )
+                self._conn.commit()
+        return [(r["asker_id"], r["question"] or "") for r in rows]
 
     # ---- per-user notes --------------------------------------------------
     def set_user_note(self, user_id: int, note: str, display: str | None = None) -> None:

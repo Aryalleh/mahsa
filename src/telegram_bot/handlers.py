@@ -33,6 +33,7 @@ HELP_TEXT = (
     "/friends        — list approved friends\n"
     "/name <uid> <name> — give a friend a name Mahsa uses\n"
     "/tell <name|@user|id> <msg> — have Mahsa pass a message to a friend\n"
+    "/ask <name|@user|id> <question> — Mahsa asks them & reports their answer back\n"
     "/lover <uid|group_id> — intimate mode for a consenting adult, or a private group\n"
     "/unlover <uid>  — remove lover status\n"
     "/lovers         — list lovers\n"
@@ -124,6 +125,18 @@ def register_handlers(
 
         log.info("Message from %s (%s): %s", display, uid, text[:80])
 
+        # If someone earlier asked Mahsa to ask THIS person something, treat this
+        # message as their answer and forward it back to whoever asked.
+        for asker_id, question in brain.memory.pop_pending_asks(uid):
+            who_name = brain.memory.contact_display(uid)
+            fwd = f"از {who_name} پرسیدم، در جوابِ «{question}» گفت:\n«{text}»"
+            try:
+                await client.send_message(asker_id, fwd)
+                brain.memory.add_message(asker_id, "assistant", fwd)
+                log.info("Forwarded %s's answer back to %s.", who_name, asker_id)
+            except Exception:  # noqa: BLE001
+                log.warning("Could not forward answer to %s", asker_id)
+
         # Approved service/menu bots: if the message has inline ("glass") buttons,
         # let Mahsa pick and press one instead of sending a persona chat reply.
         if getattr(sender, "bot", False):
@@ -163,6 +176,23 @@ def register_handlers(
                 await event.reply(
                     f"خواستم به {to_name} برسونم ولی نشد — تا وقتی اون یه بار به من "
                     "پیام نده، نمی‌تونم بهش پیام بدم."
+                )
+        elif result["kind"] == "ask":
+            to_name = result["to_name"]
+            try:
+                await client.send_message(result["to_id"], result["text"])
+                brain.memory.add_message(result["to_id"], "assistant", result["text"])
+                brain.memory.add_pending_ask(result["to_id"], result["asker_id"],
+                                             result["question"])
+                brain.memory.add_message(uid, "user", result["user_text"])
+                ack = f"باشه از {to_name} می‌پرسم و جوابشو بهت می‌گم 🌸"
+                brain.memory.add_message(uid, "assistant", ack)
+                log.info("Asked %s on behalf of %s.", to_name, uid)
+                await event.reply(ack)
+            except Exception:  # noqa: BLE001
+                log.warning("Ask to %s failed", to_name)
+                await event.reply(
+                    f"خواستم از {to_name} بپرسم ولی نشد بهش پیام بدم — هنوز به من پیام نداده."
                 )
         else:
             await event.reply(result["text"])
@@ -409,8 +439,37 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
     cmd = parts[0].lower().lstrip("/")
     if cmd not in {"approve", "block", "pending", "friends", "name", "tell",
                    "lover", "unlover", "lovers", "marry", "divorce", "spouses",
-                   "ship", "unship", "ships"}:
+                   "ship", "unship", "ships", "ask"}:
         return False
+
+    if cmd == "ask":
+        # /ask <name|@user|id> <question> — Mahsa asks them and reports back to you.
+        bits = text.split(maxsplit=2)
+        if len(bits) < 3:
+            await event.reply("Usage: /ask <name | @username | id> <question>")
+            return True
+        target_raw, question = bits[1].strip(), bits[2].strip()
+        recipient, to_name = None, target_raw
+        if target_raw.lstrip("-").isdigit():
+            recipient = int(target_raw)
+        elif target_raw.startswith("@"):
+            recipient, to_name = target_raw, target_raw.lstrip("@")
+        else:
+            matches = brain.memory.find_contacts_by_name(target_raw)
+            if len(matches) == 1:
+                recipient, to_name = matches[0][0], matches[0][1]
+            else:
+                await event.reply(f"«{target_raw}» رو پیدا نکردم یا چند نفرن — با آیدی بگو.")
+                return True
+        q_text = await brain.compose_relay(to_name, question)
+        try:
+            await client.send_message(recipient, q_text)
+            if isinstance(recipient, int):
+                brain.memory.add_pending_ask(recipient, event.sender_id, question)
+            await event.reply(f"از {to_name} پرسیدم، جوابشو که داد بهت می‌گم ✅")
+        except Exception:  # noqa: BLE001
+            await event.reply("نشد بهش پیام بدم — هنوز به من پیام نداده.")
+        return True
 
     if cmd == "ships":
         rows = brain.memory.list_ships()
