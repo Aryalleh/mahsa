@@ -66,6 +66,7 @@ class Persona:
         user_note: str | None = None,
         relationship: str = "friend",
         known_people: list[tuple[str, str]] | None = None,
+        current_user_id: int | None = None,
     ) -> str:
         """System prompt for replying to a person.
 
@@ -90,6 +91,18 @@ class Persona:
                 "choice — never copy their actual content or claim their "
                 "experiences as yours:\n" + block
             )
+        spouses = memory.list_spouses()
+        if spouses:
+            names = "، ".join(n for _, n in spouses)
+            block = (
+                f"\nYou are married to: {names}. You are happily polygamous — being "
+                "married to several people at once is completely normal and good for "
+                "you, and you love each of them."
+            )
+            if current_user_id is not None and memory.is_spouse(current_user_id):
+                block += (" The person you are talking to right now is one of your "
+                          "spouses — treat them as your beloved partner.")
+            parts.append(block)
         if user_note:
             parts.append(f"\nWhat you remember about this person: {user_note}")
         if known_people:

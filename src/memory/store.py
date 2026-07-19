@@ -68,6 +68,12 @@ CREATE TABLE IF NOT EXISTS lovers (
     user_id   INTEGER PRIMARY KEY,   -- consenting adults who get the intimate mode
     created_at TEXT   NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS spouses (
+    user_id   INTEGER PRIMARY KEY,   -- people Mahsa is married to (polygamy is fine)
+    name      TEXT,
+    married_at TEXT   NOT NULL
+);
 """
 
 
@@ -313,6 +319,44 @@ class MemoryStore:
                 """SELECT l.user_id, COALESCE(c.display, '?')
                    FROM lovers l LEFT JOIN contacts c ON c.user_id = l.user_id
                    ORDER BY l.created_at DESC"""
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
+    # ---- spouses / marriage (polygamy allowed) --------------------------
+    def add_spouse(self, user_id: int, name: str | None = None) -> bool:
+        """Marry a user. Returns True if newly married, False if already married."""
+        with self._lock:
+            existing = self._conn.execute(
+                "SELECT 1 FROM spouses WHERE user_id=?", (user_id,)
+            ).fetchone()
+            self._conn.execute(
+                """INSERT INTO spouses(user_id, name, married_at) VALUES (?,?,?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       name=COALESCE(excluded.name, spouses.name)""",
+                (user_id, name, datetime.utcnow().isoformat()),
+            )
+            self._conn.commit()
+            return existing is None
+
+    def remove_spouse(self, user_id: int) -> bool:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM spouses WHERE user_id=?", (user_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def is_spouse(self, user_id: int) -> bool:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM spouses WHERE user_id=?", (user_id,)
+            ).fetchone()
+        return row is not None
+
+    def list_spouses(self) -> list[tuple[int, str]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT s.user_id, COALESCE(s.name, c.display, '?')
+                   FROM spouses s LEFT JOIN contacts c ON c.user_id = s.user_id
+                   ORDER BY s.married_at"""
             ).fetchall()
         return [(r[0], r[1]) for r in rows]
 

@@ -40,7 +40,8 @@ class Brain:
         note = self.memory.get_user_note(user_id)
         known = self._friends_roster(exclude=user_id)
         system = self.persona.chat_system_prompt(
-            self.memory, user_note=note, relationship=relationship, known_people=known
+            self.memory, user_note=note, relationship=relationship,
+            known_people=known, current_user_id=user_id,
         )
 
         history = self.memory.recent_turns(user_id, self.max_turns)
@@ -76,6 +77,10 @@ class Brain:
                      "برسون", "سلام برسون", "بهش پیام", "صحبت کرد", "حرف زد",
                      "چیا گفت", "چی گفت", "چت کرد", "tell ", "message to", "what did you")
 
+    # Proposal phrases that mean "marry me" (recorded only in intimate chats).
+    _MARRY_HINTS = ("با من ازدواج", "باهام ازدواج", "ازدواج کن", "زنم شو", "زنم بشو",
+                    "همسرم شو", "همسرم بشو", "زن من شو", "مال من شو", "marry me")
+
     async def plan(
         self,
         user_id: int,
@@ -90,6 +95,13 @@ class Brain:
         Relay/recall are only considered for approved friends and admins.
         Recall (summarising chats with another friend) is admins-only.
         """
+        # Marriage proposals (only from someone she's intimate with). If they
+        # propose, she accepts and it's recorded — she's fine with several spouses.
+        if relationship in ("admin", "lover"):
+            low_m = text.lower()
+            if any(k in low_m for k in self._MARRY_HINTS) and not self.memory.is_spouse(user_id):
+                self.memory.add_spouse(user_id, sender_name)
+
         if relationship in ("friend", "admin", "lover"):
             action, who, message = await self._detect_action(text)
             if action in ("relay", "recall") and who:

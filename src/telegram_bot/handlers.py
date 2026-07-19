@@ -36,6 +36,9 @@ HELP_TEXT = (
     "/lover <uid|group_id> — intimate mode for a consenting adult, or a private group\n"
     "/unlover <uid>  — remove lover status\n"
     "/lovers         — list lovers\n"
+    "/marry <uid> [name] — marry someone (polygamy is fine)\n"
+    "/divorce <uid>  — divorce someone\n"
+    "/spouses        — list Mahsa's spouses\n"
     "/mood           — show her current mood\n"
     "/post           — write & publish today's diary post now\n"
     "/reset <uid>    — clear a user's conversation history\n"
@@ -402,8 +405,34 @@ async def _handle_contact_command(client, event, text: str, brain: Brain) -> boo
     parts = text.split()
     cmd = parts[0].lower().lstrip("/")
     if cmd not in {"approve", "block", "pending", "friends", "name", "tell",
-                   "lover", "unlover", "lovers"}:
+                   "lover", "unlover", "lovers", "marry", "divorce", "spouses"}:
         return False
+
+    if cmd == "spouses":
+        rows = brain.memory.list_spouses()
+        if not rows:
+            await event.reply("مهسا هنوز با کسی ازدواج نکرده.")
+        else:
+            await event.reply("همسرهای مهسا:\n" +
+                              "\n".join(f"• {n} — {u}" for u, n in rows))
+        return True
+
+    if cmd in ("marry", "divorce"):
+        bits = text.split(maxsplit=2)
+        if len(bits) < 2 or not bits[1].lstrip("-").isdigit():
+            await event.reply(f"Usage: /{cmd} <user id> [name]")
+            return True
+        target = int(bits[1])
+        if cmd == "marry":
+            name = bits[2].strip() if len(bits) > 2 else None
+            if target > 0:
+                brain.memory.upsert_contact(target, name, "approved")
+            brain.memory.add_spouse(target, name)
+            await event.reply(f"💍 مهسا با {name or target} ازدواج کرد. (چندهمسری اوکیه)")
+        else:
+            ok = brain.memory.remove_spouse(target)
+            await event.reply("طلاق ثبت شد." if ok else "این آیدی همسرش نبود.")
+        return True
 
     if cmd == "lovers":
         rows = brain.memory.list_lovers()
