@@ -704,8 +704,20 @@ async def _handle_command(
             ok = brain.memory.delete_fact(int(arg))
             await event.reply("Forgotten." if ok else "No fact with that id.")
     elif cmd == "mood":
-        mood = brain.memory.latest_mood()
-        await event.reply(f"Right now: {mood}" if mood else "I haven't journaled a mood yet.")
+        if arg:
+            if arg.strip() in ("auto", "clear", "پاک", "reset"):
+                brain.memory.set_state("mood", "")
+                await event.reply("مود به حالتِ خودکار برگشت. 🎭")
+            else:
+                brain.memory.set_state("mood", arg.strip())
+                await event.reply(f"مود مهسا شد: {arg.strip()} 🎭")
+        else:
+            mood = brain.memory.get_state("mood") or brain.memory.latest_mood()
+            await event.reply(
+                (f"مود فعلی: {mood}\n\nبرای تغییر: /mood <حالت>  "
+                 "(مثلاً عصبانی، سکسی، حشری، مست، دپرس، دلقک)  |  /mood auto برای خودکار")
+                if mood else "مودی ست نشده. /mood <حالت>"
+            )
     elif cmd == "post":
         await event.reply("Writing today's post…")
         result = await post_daily(True)

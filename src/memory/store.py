@@ -89,6 +89,11 @@ CREATE TABLE IF NOT EXISTS pending_asks (
     created_at TEXT   NOT NULL,
     PRIMARY KEY (target_id, asker_id)
 );
+
+CREATE TABLE IF NOT EXISTS state (
+    key   TEXT PRIMARY KEY,          -- small key/value state (e.g. current mood)
+    value TEXT
+);
 """
 
 
@@ -425,6 +430,23 @@ class MemoryStore:
             ).fetchall()
         return [(r["user_a"], self.contact_display(r["user_a"]),
                  r["user_b"], self.contact_display(r["user_b"])) for r in rows]
+
+    # ---- key/value state (current mood, …) ------------------------------
+    def set_state(self, key: str, value: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO state(key, value) VALUES (?,?)
+                   ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                (key, value),
+            )
+            self._conn.commit()
+
+    def get_state(self, key: str) -> str | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM state WHERE key=?", (key,)
+            ).fetchone()
+        return row["value"] if row and row["value"] else None
 
     # ---- pending cross-chat questions -----------------------------------
     def add_pending_ask(self, target_id: int, asker_id: int, question: str | None) -> None:

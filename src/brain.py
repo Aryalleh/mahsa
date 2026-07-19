@@ -131,15 +131,29 @@ class Brain:
         reply = await self.reply(user_id, text, display=sender_name, relationship=relationship)
         return {"kind": "reply", "text": reply}
 
+    # Deterministic Persian patterns, so relay/ask work without relying on the
+    # model's JSON (which small models get wrong). Tried before the model call.
+    _RELAY_RE = re.compile(r"به\s+(.+?)\s+(?:بگو|بگه|پیام\s*بده|پیام\s*بفرست|بفرست)\s+(.+)", re.S)
+    _ASK_RE = re.compile(r"از\s+(.+?)\s+(?:بپرس|سؤال\s*کن|سوال\s*کن)\s*(.*)", re.S)
+
     async def _detect_action(self, text: str) -> tuple[str, str, str]:
         """Classify intent about a friend. Returns (action, who, message).
 
-        action is 'relay' (tell a friend something), 'recall' (what did you talk
-        about with a friend), or 'none'.
+        action is 'relay' (tell a friend), 'ask' (ask and report back),
+        'recall' (what did you talk about with a friend), or 'none'.
         """
         friends = [d for _, d, _ in self.memory.list_contacts("approved") if d and d != "?"]
         if not friends:
             return ("none", "", "")
+
+        # Fast, reliable regex path first — no model call needed.
+        m = self._RELAY_RE.search(text)
+        if m and m.group(2).strip():
+            return ("relay", m.group(1).strip(), m.group(2).strip())
+        m = self._ASK_RE.search(text)
+        if m:
+            return ("ask", m.group(1).strip(), m.group(2).strip())
+
         low = text.lower()
         # Only run the extra detection call when an explicit relay/recall phrase
         # is present — a bare friend-name mention is not enough.

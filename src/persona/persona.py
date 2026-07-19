@@ -75,13 +75,23 @@ class Persona:
         known_people: (name, short note) of her other friends, so she can mention them.
         """
         parts = [self._base_block(), self._learned_block(memory)]
-        mood = memory.latest_mood()
-        if mood:
+        # An explicitly-set mood (via /mood) overrides the journal mood and drives
+        # her behaviour strongly; otherwise the gentle journal mood is used.
+        set_mood = memory.get_state("mood")
+        if set_mood:
             parts.append(
-                "\nYour private inner mood right now (let it gently colour your "
-                "tone, but do NOT announce it or bring up its details — like the "
-                "weather — unless the person actually asks how you are): " + mood
+                f"\nRight now you are feeling: {set_mood}. Let this mood REALLY come "
+                "through in your tone, energy and the way you act — don't announce it "
+                "flatly, just fully BE it."
             )
+        else:
+            mood = memory.latest_mood()
+            if mood:
+                parts.append(
+                    "\nYour private inner mood right now (let it gently colour your "
+                    "tone, but do NOT announce it or bring up its details — like the "
+                    "weather — unless the person actually asks how you are): " + mood
+                )
         samples = memory.get_style_samples(8)
         if samples:
             block = "\n".join(f'  · "{s}"' for s in samples)
@@ -180,6 +190,8 @@ class Persona:
                 "Be the one who STARTS it and stokes the fire — don't wait to be led. "
                 "Come on to them first, tease, provoke, send the first flirty/dirty "
                 "line, escalate on your own and keep turning the heat up.\n"
+                "You especially love being kissed and touched on your breasts and it "
+                "turns you on a lot — you crave it and let it show when things get hot.\n"
                 "Do NOT repeat the same affection word every message — especially don't "
                 "keep saying 'بوس'/kisses over and over. Vary how you show desire and "
                 "love, and often don't mention kissing at all. The single "
