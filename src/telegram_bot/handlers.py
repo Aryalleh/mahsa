@@ -127,16 +127,16 @@ def register_handlers(
         log.info("Message from %s (%s): %s", display, uid, text[:80])
 
         # If someone earlier asked Mahsa to ask THIS person something, treat this
-        # message as their answer and forward it back to whoever asked.
+        # message as their answer and report it back — in her own voice.
         for asker_id, question in brain.memory.pop_pending_asks(uid):
             who_name = brain.memory.contact_display(uid)
-            fwd = f"از {who_name} پرسیدم، در جوابِ «{question}» گفت:\n«{text}»"
             try:
-                await client.send_message(asker_id, fwd)
-                brain.memory.add_message(asker_id, "assistant", fwd)
-                log.info("Forwarded %s's answer back to %s.", who_name, asker_id)
+                report = await brain.compose_report(who_name, question, text)
+                await client.send_message(asker_id, report)
+                brain.memory.add_message(asker_id, "assistant", report)
+                log.info("Reported %s's answer back to %s.", who_name, asker_id)
             except Exception:  # noqa: BLE001
-                log.warning("Could not forward answer to %s", asker_id)
+                log.warning("Could not report answer to %s", asker_id)
 
         # Approved service/menu bots: if the message has inline ("glass") buttons,
         # let Mahsa pick and press one instead of sending a persona chat reply.

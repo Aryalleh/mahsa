@@ -218,6 +218,28 @@ class Brain:
             return f"سلام {to_name} جان 🌸 {content}"
         return text
 
+    async def compose_report(self, target_name: str, question: str, answer: str) -> str:
+        """Report a friend's answer back to the asker, in Mahsa's own natural voice."""
+        system = self.persona.chat_system_prompt(self.memory)
+        prompt = (
+            f"You asked your friend {target_name} this on someone's behalf: "
+            f"\"{question}\". {target_name} replied: \"{answer}\". Now tell the person "
+            f"who wanted to know, in your OWN warm voice, first person, what {target_name} "
+            "said back. One or two natural lines, no quotation marks, no 'they said:'."
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+        try:
+            text = (await asyncio.to_thread(self.engine.chat, messages, 0.7, 140)).strip()
+        except Exception:  # noqa: BLE001
+            text = ""
+        text = text.strip().strip("«»\"'")
+        if self._looks_bad(text):
+            return f"از {target_name} پرسیدم، گفت: {answer}"
+        return text
+
     async def summarise_chat_with(self, friend_id: int, friend_name: str) -> str:
         """Summarise, in Mahsa's voice, what she and a given friend talked about."""
         turns = self.memory.recent_turns(friend_id, self.max_turns)
